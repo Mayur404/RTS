@@ -31,6 +31,7 @@ class DiscreteEventSimulator:
         self.devices: Dict[str, DeviceNode] = {}
         self.telemetry_log: List[Dict[str, Any]] = []
         self.all_tasks: List[TaskInstance] = []
+        self._monitoring_scheduled_until_ms: float = 0.0
 
         # Active scheduler hook
         self.scheduler: Optional[Any] = None
@@ -146,13 +147,23 @@ class DiscreteEventSimulator:
         })
 
     def run(self, duration_ms: Optional[float] = None) -> Dict[str, Any]:
-        """Runs the discrete-event simulation until queue is empty or duration reached."""
-        max_duration = duration_ms or self.config.simulation_duration_ms
-        last_clock = 0.0
+        """Advance monotonically to an absolute simulation horizon.
 
-        # Periodic monitoring ticks
+        Future events remain queued, so repeated calls are equivalent to a single call
+        to the final horizon for the same already-scheduled workload.
+        """
+        max_duration = duration_ms or self.config.simulation_duration_ms
+        if max_duration < self.current_time_ms:
+            raise ValueError(
+                f"Cannot run backwards from {self.current_time_ms} ms to {max_duration} ms"
+            )
+
+        # Schedule each monitoring tick at most once across incremental run calls.
         tick_interval_ms = self.config.tick_step_ms
-        next_tick = tick_interval_ms
+        next_tick = max(
+            tick_interval_ms,
+            self._monitoring_scheduled_until_ms + tick_interval_ms,
+        )
         while next_tick <= max_duration:
             self.events.push(
                 timestamp_ms=next_tick,
@@ -160,19 +171,29 @@ class DiscreteEventSimulator:
                 device_id="GLOBAL",
                 payload={}
             )
+            self._monitoring_scheduled_until_ms = next_tick
             next_tick += tick_interval_ms
 
         while not self.events.is_empty():
-            event = self.events.pop()
-            if event is None or event.timestamp_ms > max_duration:
+            next_event = self.events.peek()
+            if next_event is None or next_event.timestamp_ms > max_duration:
                 break
+            event = self.events.pop()
+            if event is None:
+                break
+            if event.timestamp_ms < self.current_time_ms:
+                raise RuntimeError(
+                    f"Event time moved backwards: {event.timestamp_ms} < {self.current_time_ms}"
+                )
 
             # Advance time and compute work done during delta
-            delta_ms = event.timestamp_ms - last_clock
+            delta_ms = event.timestamp_ms - self.current_time_ms
             if delta_ms > 0.0:
+                # Completion timestamps are never recorded before the interval end.
+                self.current_time_ms = event.timestamp_ms
                 self._advance_progress(delta_ms)
-                last_clock = event.timestamp_ms
-            self.current_time_ms = event.timestamp_ms
+            else:
+                self.current_time_ms = event.timestamp_ms
 
             # Dispatch discrete event
             self._handle_event(event)
@@ -182,9 +203,10 @@ class DiscreteEventSimulator:
                 self.scheduler.on_event(self, event)
 
         # Final progress check up to max_duration
-        if max_duration > last_clock:
-            self._advance_progress(max_duration - last_clock)
+        if max_duration > self.current_time_ms:
+            delta_ms = max_duration - self.current_time_ms
             self.current_time_ms = max_duration
+            self._advance_progress(delta_ms)
 
         return self.compute_metrics()
 
@@ -281,9 +303,16 @@ class DiscreteEventSimulator:
 
     def compute_metrics(self) -> Dict[str, Any]:
         """Calculates comprehensive Real-Time Systems metrics."""
-        completed = [t for t in self.all_tasks if t.finish_time_ms is not None]
-        missed = [t for t in self.all_tasks if (t.finish_time_ms is not None and not t.deadline_met) or (t.finish_time_ms is None and self.current_time_ms > t.deadline_ms)]
-        met = [t for t in self.all_tasks if t.deadline_met is True]
+        released = [t for t in self.all_tasks if t.release_time_ms <= self.current_time_ms]
+        completed = [t for t in released if t.state == TaskState.COMPLETED]
+        missed = [
+            t for t in released
+            if t.state == TaskState.DEADLINE_MISSED
+            or (t.finish_time_ms is None and self.current_time_ms >= t.deadline_ms)
+        ]
+        met = [t for t in completed if t.deadline_met is True]
+        eligible = [t for t in released if t in completed or t in missed]
+        censored = [t for t in released if t not in eligible]
 
         response_times = [t.response_time_ms for t in completed if t.response_time_ms is not None]
         lateness_vals = [t.lateness_ms for t in completed if t.lateness_ms is not None]
@@ -304,12 +333,14 @@ class DiscreteEventSimulator:
         total_fallbacks = sum(dev.total_fallbacks for dev in self.devices.values())
 
         return {
-            "total_released_tasks": len(self.all_tasks),
+            "total_released_tasks": len(released),
+            "eligible_task_count": len(eligible),
+            "censored_task_count": len(censored),
             "completed_tasks": len(completed),
             "deadline_met_count": len(met),
             "deadline_missed_count": len(missed),
             "critical_misses": len(critical_misses),
-            "deadline_miss_ratio": round(len(missed) / max(1, len(self.all_tasks)), 4),
+            "deadline_miss_ratio": round(len(missed) / max(1, len(eligible)), 4),
             "avg_response_time_ms": round(avg_rt, 2),
             "worst_case_response_time_ms": round(wc_rt, 2),
             "avg_lateness_ms": round(avg_lateness, 2),

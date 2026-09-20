@@ -1,5 +1,7 @@
 # Predictive Runtime Protection for Distributed Real-Time AI Systems
 
+> **DRAFT EVIDENCE NOTICE (2026-09-20):** The quantitative results, figures, and formal-verification statements in this draft come from the legacy demonstration pipeline and are not yet backed by canonical run provenance or a runtime-matched timing certificate. They must not be cited as validated empirical findings. See `../RESEARCH_STATUS.md`.
+
 **Authors:** Mayur Raju (24BCS073), P Gnandeep (24BCS095), P Maruthi (24BCS098), P Sanjay (24BCS100), S Sudharsan Reddy (24BCS130)  
 **Affiliation:** Department of Computer Science and Engineering  
 **Course:** Real-Time Systems $\cdot$ **Instructor:** Dr. Swagatika Sahoo  

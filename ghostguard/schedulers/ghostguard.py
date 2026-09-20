@@ -284,7 +284,8 @@ class GhostGuardScheduler(BaseScheduler):
                         payload={"success": True}
                     )
                 else:
-                    # STEP 5: No safe candidate -> Activate VERIFIED LOCAL FALLBACK
+                    # STEP 5: No safe candidate -> Activate configured local fallback.
+                    # A runtime verification certificate is not integrated yet.
                     task.apply_degradation(current_time_ms, reason=f"Predicted {cause} (Risk {round(risk*100)}%)")
                     dev.total_fallbacks += 1
                     self.verified_fallbacks_invoked += 1
@@ -295,7 +296,7 @@ class GhostGuardScheduler(BaseScheduler):
                         "risk_score": round(risk, 3),
                         "cause": cause,
                         "new_wcet_ms": task.degraded_wcet_ms,
-                        "status": "Fallback VERIFIED under current configured timing assumptions"
+                        "status": "Fallback configured; runtime certificate integration pending"
                     })
 
         super().schedule_device(dev, current_time_ms)

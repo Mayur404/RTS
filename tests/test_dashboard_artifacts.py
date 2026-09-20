@@ -43,21 +43,30 @@ def test_timeline_tracer():
     f55 = frames[55]
     assert f55["stage_id"] == 6
 
-    # Verify that GhostGuard preserves 0 critical misses
+    # The scripted trace currently preserves its critical task, but non-critical
+    # misses must remain visible instead of being relabelled as completions.
     assert res["metrics_gg"]["critical_misses"] == 0
-    assert res["metrics_gg"]["deadline_missed_count"] == 0
+    assert res["metrics_gg"]["deadline_missed_count"] >= res["metrics_gg"]["critical_misses"]
+    assert (
+        res["metrics_gg"]["completed_tasks"]
+        + res["metrics_gg"]["deadline_missed_count"]
+        == res["metrics_gg"]["eligible_task_count"]
+    )
 
 
 def test_paper_artifacts_generation(tmp_path):
-    """Verify that paper artifacts generator writes valid LaTeX and JSON files."""
+    """Verify that the legacy demonstration generator writes isolated outputs."""
     test_paper_dir = str(tmp_path / "paper")
-    generate_paper_artifacts(output_dir=test_paper_dir)
+    test_plots_dir = str(tmp_path / "plots")
+    generate_paper_artifacts(
+        output_dir=test_paper_dir,
+        plots_dir=test_plots_dir,
+    )
 
     # 1. Check Plots
-    plots_dir = os.path.join("results", "plots")
     for fig_name in ["fig1_timeline_trace", "fig2_dmr_comparison", "fig3_latency_cdf", "fig4_gnn_overhead"]:
-        png_f = os.path.join(plots_dir, f"{fig_name}.png")
-        pdf_f = os.path.join(plots_dir, f"{fig_name}.pdf")
+        png_f = os.path.join(test_plots_dir, f"{fig_name}.png")
+        pdf_f = os.path.join(test_plots_dir, f"{fig_name}.pdf")
         assert os.path.exists(png_f), f"Missing plot {png_f}"
         assert os.path.exists(pdf_f), f"Missing vector plot {pdf_f}"
         assert os.path.getsize(png_f) > 1000

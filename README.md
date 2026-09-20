@@ -7,6 +7,9 @@
 
 ---
 
+> [!WARNING]
+> **Research status:** this repository is currently a demonstration prototype. Existing Section 12 numbers and paper figures are not yet provenance-backed research results and must not be cited as empirical evidence. See [RESEARCH_STATUS.md](RESEARCH_STATUS.md), [Implementation Plan.md](Implementation%20Plan.md), and [UI Design.md](UI%20Design.md).
+
 ## Overview
 
 **GhostGuard** is a proactive, low-overhead runtime arbitration and protection framework for distributed fleets of heterogeneous edge nodes (autonomous drones, ground robots, and edge GPU clusters). 
@@ -17,11 +20,13 @@ GhostGuard prevents deadline misses through a **4-Stage Runtime Arbitration Engi
 1. **Sub-millisecond Graph Risk Estimation:** A compact Graph Neural Network ($T_{\text{infer}} \le 0.35\text{ ms}$) predicts deadline-violation risk stages ahead of time.
 2. **Cooperative Offloading:** Intelligently evaluates candidate neighbors across the compute mesh under real-time feasibility constraints ($t + 2\delta_{\text{comm}} + T_{\text{exec}} + \Delta_{\text{margin}} \le D_i$).
 3. **Active In-Flight Watchdog:** Monitors in-flight offloaded tasks. If the remote candidate experiences secondary contention, the watchdog aborts remote reliance mid-flight.
-4. **Verified Degraded Fallback:** Instantly activates local quantized/pruned inference ($C_i^{\text{deg}}$) mathematically proven by **Response Time Analysis (RTA)** to guarantee deadline compliance.
+4. **Degraded Fallback Prototype:** Activates reduced-cost local inference. The research implementation will bind this action to a configuration-specific Response Time Analysis certificate before describing it as verified.
 
 ---
 
-## Key Performance Results (Section 12 Benchmark)
+## Legacy Demonstration Output (Section 12 Walkthrough)
+
+The values below are retained to reproduce the original scripted walkthrough. They currently conflict with aggregate simulator output and are not validated experimental results.
 
 Under the Section 12 deterministic contention failure scenario (Device 1 contention burst at $t=25\text{ms}$, neighbor shock at $t=45\text{ms}$):
 
@@ -32,7 +37,7 @@ Under the Section 12 deterministic contention failure scenario (Device 1 content
 | **EDF-Local (Baseline)** | 11 | 8 | 7.6% | 86.2 | 15.5 | 0 | Reactive Contention Collapse |
 | **Always-Offload** | 8 | 6 | 5.6% | 72.4 | 14.2 | 0 | Mesh & Queue Saturation |
 | **Reactive-Degrade** | 5 | 3 | 3.5% | 48.0 | 12.1 | 12 | Triggers Too Late (Slack Depleted) |
-| **GhostGuard (Proposed)** | **0** | **0** | **0.0%** | **18.2** | **8.4** | **44** | **100% Mission Bounds Preserved** |
+| **GhostGuard (Proposed)** | **0** | **0** | **0.0%** | **18.2** | **8.4** | **44** | **Scripted demonstration value** |
 
 ---
 
@@ -97,7 +102,7 @@ For the critical **Perception** pipeline stage:
   $$\left\lceil \frac{33.0}{20.0} \right\rceil \times 1.5\text{ ms (Sense)} + \left\lceil \frac{33.0}{20.0} \right\rceil \times 2.5\text{ ms (Obstacle)} + \left\lceil \frac{33.0}{10.0} \right\rceil \times 1.0\text{ ms (Actuation)} = 3.0 + 5.0 + 4.0 = 12.0\text{ ms}$$
 * Worst-Case Response Time:
   $$R_{\text{Perception}} = 5.0 + 12.0 + 1.2\text{ ms (scheduler overhead)} = 18.2\text{ ms} \le 33.0\text{ ms}$$
-* **Safety Margin:** $+14.8\text{ ms}$ $\implies$ **Formally Verified Safe**.
+* **Legacy analytical example:** the displayed $+14.8\text{ ms}$ margin is not yet produced by an exact configuration-bound certificate and must be recomputed by the research-grade analyzer.
 
 ---
 

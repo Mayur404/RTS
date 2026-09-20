@@ -20,7 +20,13 @@ class AlwaysOffloadScheduler(BaseScheduler):
             return
 
         # Attempt to offload any offloadable tasks to any reachable neighbor
-        offload_candidates = [t for t in dev.ready_queue if t.is_offloadable]
+        # Only the task's origin may make its offload decision. Without this
+        # guard, a remotely arrived task is re-offloaded by its host and can
+        # ping-pong through the mesh on later scheduler callbacks.
+        offload_candidates = [
+            t for t in dev.ready_queue
+            if t.is_offloadable and t.origin_device_id == dev.device_id
+        ]
         reachable_neighbors = [n for n in dev.neighbors.values() if n.is_reachable]
 
         if reachable_neighbors and offload_candidates:

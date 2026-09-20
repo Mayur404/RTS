@@ -69,3 +69,46 @@ def test_deterministic_simulation_repeatability():
     assert m1["deadline_missed_count"] == m2["deadline_missed_count"]
     assert m1["avg_response_time_ms"] == m2["avg_response_time_ms"]
     assert len(sim1.telemetry_log) == len(sim2.telemetry_log)
+
+
+def test_deadline_expiry_is_never_counted_as_success():
+    config = GhostGuardConfig(simulation_duration_ms=25.0)
+    sim = DiscreteEventSimulator(config=config, seed=7, fleet_size=1)
+    sim.schedule_periodic_tasks(duration_ms=1.0)
+    sim.attach_scheduler(LocalFIFOScheduler())
+
+    metrics = sim.run(duration_ms=25.0)
+    expired = [task for task in sim.all_tasks if task.state == TaskState.DEADLINE_MISSED]
+
+    assert expired
+    assert all(task.deadline_met is False for task in expired)
+    assert metrics["deadline_missed_count"] == len(expired)
+    assert metrics["deadline_met_count"] == len(
+        [task for task in sim.all_tasks if task.state == TaskState.COMPLETED]
+    )
+
+
+def test_incremental_run_preserves_future_events():
+    config = GhostGuardConfig(simulation_duration_ms=40.0)
+
+    incremental = DiscreteEventSimulator(config=config, seed=11, fleet_size=1)
+    incremental.schedule_periodic_tasks(duration_ms=40.0)
+    incremental.attach_scheduler(LocalFIFOScheduler())
+    incremental.run(duration_ms=5.0)
+    incremental_metrics = incremental.run(duration_ms=40.0)
+
+    single = DiscreteEventSimulator(config=config, seed=11, fleet_size=1)
+    single.schedule_periodic_tasks(duration_ms=40.0)
+    single.attach_scheduler(LocalFIFOScheduler())
+    single_metrics = single.run(duration_ms=40.0)
+
+    assert incremental_metrics == single_metrics
+    assert incremental.telemetry_log == single.telemetry_log
+
+
+def test_run_rejects_a_backwards_horizon():
+    sim = DiscreteEventSimulator(seed=3, fleet_size=1)
+    sim.run(duration_ms=5.0)
+
+    with pytest.raises(ValueError, match="Cannot run backwards"):
+        sim.run(duration_ms=4.0)

@@ -197,7 +197,7 @@ st.markdown(f"""
             <div style="font-size:0.75rem; font-weight:800; letter-spacing:0.12em; color:#2563EB;">EMBEDDED REAL-TIME SYSTEMS RESEARCH PROTOTYPE</div>
             <h2 style="margin:0.15rem 0; font-weight:800; color:#111827; font-size:1.85rem;">GhostGuard // Predictive Runtime Protection</h2>
             <div style="font-size:0.92rem; color:#4B5563;">
-                Autonomous predictive failover and analytic degraded recovery guaranteeing zero critical deadline misses in distributed edge AI.
+                Scripted demonstration of predictive failover and degraded recovery. Values shown are not yet provenance-backed research evidence.
             </div>
         </div>
         <div>

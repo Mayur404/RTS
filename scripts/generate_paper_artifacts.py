@@ -20,10 +20,16 @@ from ghostguard.verification.timing_analyzer import TimingAnalyzer
 from ghostguard.experiments.plotting import generate_all_plots
 
 
-def generate_paper_artifacts(output_dir: str = "results/paper"):
-    """Generates all paper tables, JSON data, and extract documentation."""
+def generate_paper_artifacts(
+    output_dir: str = "results/paper",
+    plots_dir: str = "results/plots",
+):
+    """Generate the legacy demonstration bundle.
+
+    These outputs are not provenance-backed research evidence.  Callers may
+    redirect both destinations so validation does not mutate tracked artifacts.
+    """
     os.makedirs(output_dir, exist_ok=True)
-    plots_dir = os.path.join("results", "plots")
     generate_all_plots(plots_dir)
 
     # -----------------------------------------------------------------------

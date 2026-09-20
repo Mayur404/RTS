@@ -36,7 +36,7 @@ class PredictiveNoFallbackScheduler(BaseScheduler):
             return
 
         for task in list(dev.ready_queue):
-            if not task.is_offloadable:
+            if not task.is_offloadable or task.origin_device_id != dev.device_id:
                 continue
 
             risk = self._compute_heuristic_risk(task, dev, current_time_ms)

@@ -10,6 +10,8 @@ from ghostguard.schedulers.local_fifo import LocalFIFOScheduler
 from ghostguard.schedulers.edf import EDFScheduler
 from ghostguard.schedulers.rm import RMScheduler
 from ghostguard.schedulers.reactive_fallback import ReactiveFallbackScheduler
+from ghostguard.schedulers.always_offload import AlwaysOffloadScheduler
+from ghostguard.simulator.engine import DiscreteEventSimulator
 
 
 def test_edf_ordering():
@@ -64,3 +66,24 @@ def test_reactive_fallback_trigger():
     sched.order_ready_queue(dev, 5.0)
     assert t.is_degraded
     assert t.remaining_work_ms == t.degraded_wcet_ms
+
+
+def test_always_offload_does_not_reoffload_a_remote_task():
+    sim = DiscreteEventSimulator(seed=5, fleet_size=2)
+    scheduler = AlwaysOffloadScheduler()
+    sim.attach_scheduler(scheduler)
+
+    remote_host = sim.devices["Device_2"]
+    task = TaskInstance.from_profile(
+        DEFAULT_TASK_PROFILES["Perception"],
+        "remote-p1",
+        "Device_1",
+        0.0,
+    )
+    task.is_remote_execution = True
+    remote_host.admit_task(task)
+
+    scheduler.schedule_device(remote_host, 5.0)
+
+    assert remote_host.total_offloads == 0
+    assert task.offload_target_id is None

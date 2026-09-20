@@ -89,6 +89,8 @@ class TaskInstance:
 
     @property
     def deadline_met(self) -> Optional[bool]:
+        if self.state == TaskState.DEADLINE_MISSED:
+            return False
         if self.finish_time_ms is not None:
             return self.finish_time_ms <= self.deadline_ms
         return None
