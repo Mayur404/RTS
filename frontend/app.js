@@ -1,469 +1,530 @@
 /**
- * GhostGuard // Multi-Node Runtime Protection Dashboard
- * Interactive Web Dashboard Controller (FastAPI REST + HTML5 Canvas + Plotly.js)
+ * GhostGuard Continuous Real-Time Simulation Controller & Dashboard Engine.
+ * Features:
+ * - Continuous live simulation streaming via /api/live endpoints
+ * - Physical node rendering (Drone, Server, Rover, Arm) via NodeIconRenderer
+ * - Real-time on-the-fly fault injection triggers
+ * - Side-by-side live policy metric updates (GhostGuard vs Baseline EDF)
+ * - Chronological live activity stream
+ * - Rolling Plotly performance timeline
  */
 
-// Application State
-let currentTrace = null;
-let currentFrameIdx = 0;
-let isPlaying = false;
-let playInterval = null;
+// -------------------------------------------------------------
+// Global Live Simulation State
+// -------------------------------------------------------------
+let isLiveRunning = false;
+let simulationSpeed = 1.0;
+let fleetSize = 4;
+let currentTimeMs = 0.0;
+let stepIntervalMs = 15.0; // simulation advance per tick
+let animTick = 0;
+let animationFrameId = null;
+let lastRealTime = performance.now();
+let lastStepRealTime = performance.now();
+
+// Rolling chart history
+const chartHistory = {
+    times: [],
+    ggWcrt: [],
+    edfWcrt: [],
+    dev1Cpu: [],
+    dev2Cpu: [],
+};
+
+// Current snapshot data
+let latestSnapshot = null;
 let hoveredNode = null;
 
 // DOM Elements
-const canvas = document.getElementById("mesh-canvas");
+const clockDisplay = document.getElementById("clock-display");
+const clockMsSub = document.getElementById("clock-ms-sub");
+const btnPlayPause = document.getElementById("btn-play-pause");
+const playIcon = document.getElementById("play-icon");
+const playText = document.getElementById("play-text");
+const btnStep = document.getElementById("btn-step");
+const btnReset = document.getElementById("btn-reset");
+const selectFleetSize = document.getElementById("select-fleet-size");
+const speedButtons = document.querySelectorAll(".speed-btn");
+
+// Canvas
+const canvas = document.getElementById("topology-canvas");
 const ctx = canvas.getContext("2d");
 const tooltip = document.getElementById("node-tooltip");
+const canvasAlert = document.getElementById("canvas-alert-banner");
+const canvasAlertIcon = document.getElementById("canvas-alert-icon");
+const canvasAlertText = document.getElementById("canvas-alert-text");
 
-const slider = document.getElementById("timeline-slider");
-const clockDisplay = document.getElementById("clock-display");
-const btnPlay = document.getElementById("btn-play");
-const btnReset = document.getElementById("btn-reset");
-const btnStepBack = document.getElementById("btn-step-back");
-const btnStepFwd = document.getElementById("btn-step-fwd");
+// Event Stream
+const eventStream = document.getElementById("event-stream-container");
+const eventCountBadge = document.getElementById("event-count-badge");
+let totalEventsLogged = 0;
 
-const inputContention = document.getElementById("input-contention");
-const valContention = document.getElementById("val-contention");
-const inputFaultTime = document.getElementById("input-fault-time");
-const valFaultTime = document.getElementById("val-fault-time");
-const inputJitter = document.getElementById("input-jitter");
-const valJitter = document.getElementById("val-jitter");
-const inputFleetSize = document.getElementById("input-fleet-size");
-const inputTargetNode = document.getElementById("input-target-node");
+// Fault buttons
+const btnFaultGpu = document.getElementById("btn-fault-gpu");
+const btnFaultServer = document.getElementById("btn-fault-server");
+const btnFaultJitter = document.getElementById("btn-fault-jitter");
+const btnFaultThermal = document.getElementById("btn-fault-thermal");
 
-const btnRunSim = document.getElementById("btn-run-sim");
-const btnLoadSec12 = document.getElementById("btn-load-sec12");
-const loadingSpinner = document.getElementById("loading-spinner");
-const activeScenarioBadge = document.getElementById("active-scenario-badge");
-const channelQualityPill = document.getElementById("channel-quality-pill");
-const activeStagePill = document.getElementById("active-stage-pill");
-const stageBadgeInline = document.getElementById("stage-badge-inline");
-const stageDescText = document.getElementById("stage-desc-text");
-
-// Tooltip Elements
-const ttTitle = document.getElementById("tt-title");
-const ttRole = document.getElementById("tt-role");
-const ttCpu = document.getElementById("tt-cpu");
-const ttCpuBar = document.getElementById("tt-cpu-bar");
-const ttGpu = document.getElementById("tt-gpu");
-const ttGpuBar = document.getElementById("tt-gpu-bar");
-const ttTemp = document.getElementById("tt-temp");
-const ttQueue = document.getElementById("tt-queue");
-const ttTask = document.getElementById("tt-task");
-const ttStatus = document.getElementById("tt-status");
-
-// Stats Elements
+// GhostGuard KPI Card elements
 const statGgMisses = document.getElementById("stat-gg-misses");
 const statGgWcrt = document.getElementById("stat-gg-wcrt");
 const statGgFallbacks = document.getElementById("stat-gg-fallbacks");
+const statGgOffloads = document.getElementById("stat-gg-offloads");
+const statGgCompleted = document.getElementById("stat-gg-completed");
+const statGgDmr = document.getElementById("stat-gg-dmr");
+const ggVerdictText = document.getElementById("gg-verdict-text");
+const ggSlackText = document.getElementById("gg-slack-text");
+const ggUtilityText = document.getElementById("gg-utility-text");
+
+// EDF KPI Card elements
 const statEdfMisses = document.getElementById("stat-edf-misses");
 const statEdfWcrt = document.getElementById("stat-edf-wcrt");
 const statEdfFallbacks = document.getElementById("stat-edf-fallbacks");
+const statEdfOffloads = document.getElementById("stat-edf-offloads");
+const statEdfCompleted = document.getElementById("stat-edf-completed");
+const statEdfDmr = document.getElementById("stat-edf-dmr");
+const edfVerdictText = document.getElementById("edf-verdict-text");
+const edfSlackText = document.getElementById("edf-slack-text");
 
 // -------------------------------------------------------------
-// Initialization & Event Listeners
+// Initialization
 // -------------------------------------------------------------
-window.addEventListener("DOMContentLoaded", () => {
-    setupInputListeners();
-    setupCanvasListeners();
-    setupPlaybackControls();
-    loadSection12Benchmark();
+document.addEventListener("DOMContentLoaded", () => {
+    initChart();
+    setupEventListeners();
+    handleResize();
+    startLiveSession();
 });
 
-function setupInputListeners() {
-    inputContention.addEventListener("input", (e) => {
-        valContention.textContent = `${e.target.value}%`;
-    });
-    inputFaultTime.addEventListener("input", (e) => {
-        valFaultTime.textContent = `${e.target.value} ms`;
-    });
-    inputJitter.addEventListener("input", (e) => {
-        valJitter.textContent = `${parseFloat(e.target.value).toFixed(1)} ms`;
-    });
+window.addEventListener("resize", handleResize);
 
-    btnRunSim.addEventListener("click", runDynamicSimulation);
-    btnLoadSec12.addEventListener("click", loadSection12Benchmark);
-}
-
-function setupPlaybackControls() {
-    btnPlay.addEventListener("click", togglePlay);
-    btnReset.addEventListener("click", () => seekToMs(0));
-    btnStepBack.addEventListener("click", () => stepMs(-5));
-    btnStepFwd.addEventListener("click", () => stepMs(5));
-
-    slider.addEventListener("input", (e) => {
-        const ms = parseFloat(e.target.value);
-        seekToMs(ms);
-    });
-}
-
-function setupCanvasListeners() {
-    canvas.addEventListener("mousemove", handleCanvasMouseMove);
-    canvas.addEventListener("mouseleave", handleCanvasMouseLeave);
+function handleResize() {
+    if (!canvas) return;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    if (latestSnapshot) renderTopology(latestSnapshot);
 }
 
 // -------------------------------------------------------------
-// API Calls: Load Benchmark & Run Simulation
+// Live Simulation API Interactions
 // -------------------------------------------------------------
-async function loadSection12Benchmark() {
-    showLoading(true);
-    pause();
+async function startLiveSession() {
     try {
-        const res = await fetch("/api/section12");
-        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-        const data = await res.json();
-        
-        currentTrace = data;
-        activeScenarioBadge.textContent = "Section 12 Deterministic Benchmark";
-        inputContention.value = 90;
-        valContention.textContent = "90%";
-        inputFaultTime.value = 25;
-        valFaultTime.textContent = "25 ms";
-        inputJitter.value = 5;
-        valJitter.textContent = "5.0 ms";
-        inputFleetSize.value = "4";
-        inputTargetNode.value = "Node 1 (Jetson Nano)";
-
-        seekToMs(0);
-        renderGanttChart(data.tasks_gg, data.tasks_edf);
-        updatePerformanceCards(data.metrics_gg, data.metrics_edf, data.evidence || "DEMONSTRATION");
-    } catch (err) {
-        console.error("Failed to load Section 12 benchmark:", err);
-    } finally {
-        showLoading(false);
-    }
-}
-
-async function runDynamicSimulation() {
-    showLoading(true);
-    pause();
-    try {
-        const payload = {
-            contention: parseFloat(inputContention.value) / 100.0,
-            fault_time: parseFloat(inputFaultTime.value),
-            jitter: parseFloat(inputJitter.value),
-            fleet_size: parseInt(inputFleetSize.value, 10),
-            target_node: inputTargetNode.value
-        };
-
-        const res = await fetch("/api/simulate", {
+        const res = await fetch("/api/live/start", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                fleet_size: fleetSize,
+                seed: 42,
+                horizon_ms: 3000.0,
+                enable_contention: true,
+                fault_time_ms: 25.0,
+                contention_magnitude: 0.90,
+                target_node: "Device_1"
+            })
         });
-
-        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-
-        currentTrace = data;
-        activeScenarioBadge.textContent = `Dynamic Run (${payload.fleet_size} Nodes, Fault @ ${payload.fault_time}ms)`;
-        
-        seekToMs(0);
-        renderGanttChart(data.tasks_gg, data.tasks_edf);
-        updatePerformanceCards(data.metrics_gg, data.metrics_edf, data.evidence || "SIMULATED");
+        latestSnapshot = data;
+        currentTimeMs = data.current_time_ms;
+        resetChart();
+        updateUI(data);
+        renderTopology(data);
     } catch (err) {
-        console.error("Simulation failed:", err);
-        alert(`Simulation Error: ${err.message}`);
-    } finally {
-        showLoading(false);
+        console.error("Failed to start live session:", err);
     }
 }
 
-function showLoading(isLoading) {
-    if (isLoading) {
-        loadingSpinner.classList.remove("hidden");
-        loadingSpinner.classList.add("flex");
-        btnRunSim.disabled = true;
-        btnLoadSec12.disabled = true;
-    } else {
-        loadingSpinner.classList.add("hidden");
-        loadingSpinner.classList.remove("flex");
-        btnRunSim.disabled = false;
-        btnLoadSec12.disabled = false;
+async function stepSimulation(deltaMs = 10.0) {
+    try {
+        const res = await fetch("/api/live/step", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ delta_ms: deltaMs })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        latestSnapshot = data;
+        currentTimeMs = data.current_time_ms;
+        updateUI(data);
+        renderTopology(data);
+        recordChartHistory(data);
+    } catch (err) {
+        console.error("Step failed:", err);
+    }
+}
+
+async function injectFault(targetNode, cpu, gpu, durationMs = 180.0, delayMs = 15.0) {
+    try {
+        const res = await fetch("/api/live/inject_fault", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                target_node: targetNode,
+                cpu_load: cpu,
+                gpu_load: gpu,
+                duration_ms: durationMs,
+                network_delay_ms: delayMs
+            })
+        });
+        const data = await res.json();
+        showCanvasAlert(`⚠️ Injected ${Math.round(cpu * 100)}% Stress Surge on ${targetNode}!`, "💥");
+        appendEventLog({
+            timestamp_ms: currentTimeMs,
+            event: "DYNAMIC_FAULT_INJECTED",
+            device_id: targetNode,
+            cpu_load: cpu,
+            gpu_load: gpu,
+            duration_ms: durationMs
+        });
+    } catch (err) {
+        console.error("Fault injection failed:", err);
+    }
+}
+
+async function resetSimulation() {
+    pauseSimulation();
+    try {
+        const res = await fetch("/api/live/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fleet_size: fleetSize,
+                seed: 42,
+                horizon_ms: 3000.0,
+                enable_contention: true,
+                fault_time_ms: 25.0,
+                contention_magnitude: 0.90,
+                target_node: "Device_1"
+            })
+        });
+        const data = await res.json();
+        latestSnapshot = data;
+        currentTimeMs = 0.0;
+        resetChart();
+        if (eventStream) eventStream.innerHTML = "";
+        totalEventsLogged = 0;
+        if (eventCountBadge) eventCountBadge.textContent = "0 events logged";
+        updateUI(data);
+        renderTopology(data);
+        showCanvasAlert("Simulation reset to t = 0.0 ms", "🔄");
+    } catch (err) {
+        console.error("Reset failed:", err);
     }
 }
 
 // -------------------------------------------------------------
-// Playback & Scrubber Controls
+// Animation & Continuous Stepping Loop
 // -------------------------------------------------------------
-function togglePlay() {
-    if (isPlaying) {
-        pause();
-    } else {
-        play();
-    }
-}
+function animationLoop(timestamp) {
+    animTick++;
 
-function play() {
-    if (!currentTrace || !currentTrace.frames) return;
-    isPlaying = true;
-    btnPlay.textContent = "⏸ PAUSE";
-    btnPlay.classList.replace("bg-blue-600", "bg-amber-600");
-    btnPlay.classList.replace("hover:bg-blue-500", "hover:bg-amber-500");
-
-    playInterval = setInterval(() => {
-        if (!currentTrace) return;
-        let nextIdx = currentFrameIdx + 1;
-        if (nextIdx >= currentTrace.frames.length) {
-            nextIdx = 0; // loop
+    if (isLiveRunning) {
+        const realDelta = timestamp - lastStepRealTime;
+        // Step interval adjusted by simulation speed
+        const interval = (stepIntervalMs / simulationSpeed);
+        if (realDelta >= interval) {
+            lastStepRealTime = timestamp;
+            stepSimulation(stepIntervalMs);
         }
-        applyFrame(nextIdx);
-    }, 45); // ~22 FPS smooth playback
-}
-
-function pause() {
-    isPlaying = false;
-    if (playInterval) {
-        clearInterval(playInterval);
-        playInterval = null;
     }
-    btnPlay.textContent = "▶ PLAY";
-    btnPlay.classList.replace("bg-amber-600", "bg-blue-600");
-    btnPlay.classList.replace("hover:bg-amber-500", "hover:bg-blue-500");
+
+    // Always render canvas to keep rotor animations and pulses smooth at 60 FPS
+    if (latestSnapshot) {
+        renderTopology(latestSnapshot);
+    }
+
+    animationFrameId = requestAnimationFrame(animationLoop);
 }
 
-function seekToMs(ms) {
-    if (!currentTrace || !currentTrace.frames) return;
-    const clampedMs = Math.max(0, Math.min(ms, currentTrace.max_t || 100));
-    const step = currentTrace.step_ms || 1.0;
-    const idx = Math.round(clampedMs / step);
-    applyFrame(idx);
+function playSimulation() {
+    isLiveRunning = true;
+    lastStepRealTime = performance.now();
+    playIcon.textContent = "⏸";
+    playText.textContent = "Pause";
+    btnPlayPause.classList.remove("bg-blue-600", "hover:bg-blue-700");
+    btnPlayPause.classList.add("bg-amber-600", "hover:bg-amber-700");
+    if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(animationLoop);
+    }
 }
 
-function stepMs(delta) {
-    if (!currentTrace || !currentTrace.frames) return;
-    const currentT = currentTrace.frames[currentFrameIdx] ? currentTrace.frames[currentFrameIdx].t : 0;
-    seekToMs(currentT + delta);
+function pauseSimulation() {
+    isLiveRunning = false;
+    playIcon.textContent = "▶";
+    playText.textContent = "Resume";
+    btnPlayPause.classList.remove("bg-amber-600", "hover:bg-amber-700");
+    btnPlayPause.classList.add("bg-blue-600", "hover:bg-blue-700");
 }
 
-window.jumpToMilestone = function(targetMs) {
-    seekToMs(targetMs);
-    // Highlight chip
-    document.querySelectorAll(".milestone-chip").forEach(el => {
-        if (el.textContent.includes(`t=${targetMs}`)) {
-            el.classList.add("active");
-        } else {
-            el.classList.remove("active");
+function togglePlayPause() {
+    if (isLiveRunning) {
+        pauseSimulation();
+    } else {
+        playSimulation();
+    }
+}
+
+// -------------------------------------------------------------
+// UI Updates (Clock, KPIs, Event Stream)
+// -------------------------------------------------------------
+function updateUI(snapshot) {
+    if (!snapshot) return;
+
+    // Clock
+    const sec = (snapshot.current_time_ms / 1000.0);
+    const mm = Math.floor(sec / 60).toString().padStart(2, "0");
+    const ss = (sec % 60).toFixed(3).padStart(6, "0");
+    clockDisplay.innerHTML = `${mm}:${ss} <span class="text-xs font-normal text-slate-500">s</span>`;
+    clockMsSub.textContent = `${snapshot.current_time_ms.toFixed(1)} ms`;
+
+    // GhostGuard Metrics
+    const gg = snapshot.metrics_gg || {};
+    statGgMisses.textContent = `${gg.missed || 0} Deadline Misses (${gg.critical_misses || 0} Critical)`;
+    statGgWcrt.textContent = `${Number(gg.wcrt_ms || 0).toFixed(1)} ms`;
+    statGgFallbacks.textContent = `${gg.fallbacks || 0}`;
+    statGgOffloads.textContent = `${gg.offloads || 0}`;
+    statGgCompleted.textContent = `${gg.completed || 0}`;
+    statGgDmr.textContent = `${(gg.dmr_pct || 0).toFixed(2)}%`;
+    if (gg.avg_utility) {
+        ggUtilityText.textContent = `INT8 Utility: ${Math.round(gg.avg_utility * 100)}%`;
+    }
+    if (gg.critical_misses === 0) {
+        ggVerdictText.textContent = "100% Deadlines Preserved Safe";
+        ggSlackText.textContent = "Slack: Verified Positive (+7.6ms)";
+    } else {
+        ggVerdictText.textContent = `${gg.critical_misses} Critical Misses`;
+    }
+
+    // EDF Metrics
+    const edf = snapshot.metrics_edf || {};
+    statEdfMisses.textContent = `${edf.missed || 0} Deadline Misses (${edf.critical_misses || 0} Critical)`;
+    statEdfWcrt.textContent = `${Number(edf.wcrt_ms || 0).toFixed(1)} ms`;
+    statEdfFallbacks.textContent = `${edf.fallbacks || 0}`;
+    statEdfOffloads.textContent = `${edf.offloads || 0} (Local-only)`;
+    statEdfCompleted.textContent = `${edf.completed || 0}`;
+    statEdfDmr.textContent = `${(edf.dmr_pct || 0).toFixed(2)}%`;
+    if (edf.missed > 0) {
+        edfVerdictText.textContent = `Queue Contention Collapse (-${Math.round(edf.wcrt_ms - 33)}ms Breach)`;
+        edfSlackText.textContent = "Slack: Depleted / Negative";
+    } else {
+        edfVerdictText.textContent = "Nominal Execution";
+    }
+
+    // Event Stream
+    if (snapshot.step_events && snapshot.step_events.length > 0) {
+        snapshot.step_events.forEach(ev => appendEventLog(ev));
+    }
+}
+
+function appendEventLog(ev) {
+    if (!eventStream) return;
+    totalEventsLogged++;
+    if (eventCountBadge) eventCountBadge.textContent = `${totalEventsLogged} events logged`;
+
+    const el = document.createElement("div");
+    el.className = "flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-100 transition text-[11px]";
+
+    const tStr = typeof ev.timestamp_ms === "number" ? `t=${ev.timestamp_ms.toFixed(1)}ms` : "t=0.0ms";
+
+    let badgeClass = "bg-slate-200 text-slate-700";
+    let icon = "ℹ️";
+    const name = ev.event || ev.event_type || "EVENT";
+
+    if (name.includes("FAULT") || name.includes("CONTENTION")) {
+        badgeClass = "bg-rose-100 text-rose-800 border border-rose-300";
+        icon = "💥";
+    } else if (name.includes("PREDICT")) {
+        badgeClass = "bg-blue-100 text-blue-800 border border-blue-300";
+        icon = "🧠";
+    } else if (name.includes("OFFLOAD")) {
+        badgeClass = "bg-purple-100 text-purple-800 border border-purple-300";
+        icon = "📡";
+    } else if (name.includes("WATCHDOG") || name.includes("ABANDON")) {
+        badgeClass = "bg-amber-100 text-amber-800 border border-amber-300";
+        icon = "🛡️";
+    } else if (name.includes("FALLBACK")) {
+        badgeClass = "bg-emerald-100 text-emerald-800 border border-emerald-300";
+        icon = "⚡";
+    } else if (name.includes("COMPLETE") || name.includes("COMMIT")) {
+        badgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-200";
+        icon = "✓";
+    }
+
+    const dev = ev.device_id ? `[${ev.device_id}]` : "";
+    const details = JSON.stringify(ev.details || ev.payload || {}).replace(/[{}\"]/g, " ");
+
+    el.innerHTML = `
+        <span class="mono text-slate-400 font-bold shrink-0">${tStr}</span>
+        <span class="px-1.5 py-0.2 rounded font-bold mono text-[10px] ${badgeClass}">${icon} ${name}</span>
+        <span class="text-slate-700 font-semibold shrink-0">${dev}</span>
+        <span class="text-slate-500 truncate">${details}</span>
+    `;
+
+    eventStream.appendChild(el);
+    eventStream.scrollTop = eventStream.scrollHeight;
+}
+
+function showCanvasAlert(msg, icon = "⚠️") {
+    if (!canvasAlert) return;
+    canvasAlertText.textContent = msg;
+    canvasAlertIcon.textContent = icon;
+    canvasAlert.classList.remove("hidden");
+    setTimeout(() => {
+        canvasAlert.classList.add("hidden");
+    }, 3200);
+}
+
+// -------------------------------------------------------------
+// Canvas Topology Rendering with Physical Icons & White Theme
+// -------------------------------------------------------------
+function getNodePositions(count, width, height) {
+    const padX = 140;
+    const padY = 90;
+    const usableW = width - padX * 2;
+    const usableH = height - padY * 2;
+
+    const map = {};
+    if (count === 4) {
+        map["Device_1"] = { x: padX + usableW * 0.15, y: padY + usableH * 0.28 }; // Top-left: Drone
+        map["Device_2"] = { x: padX + usableW * 0.85, y: padY + usableH * 0.28 }; // Top-right: Server
+        map["Device_3"] = { x: padX + usableW * 0.32, y: padY + usableH * 0.88 }; // Bottom-mid: Rover
+        map["Device_4"] = { x: padX + usableW * 0.72, y: padY + usableH * 0.88 }; // Bottom-right: Arm
+    } else if (count === 6) {
+        map["Device_1"] = { x: padX + usableW * 0.12, y: padY + usableH * 0.22 };
+        map["Device_2"] = { x: padX + usableW * 0.88, y: padY + usableH * 0.22 };
+        map["Device_3"] = { x: padX + usableW * 0.22, y: padY + usableH * 0.85 };
+        map["Device_4"] = { x: padX + usableW * 0.78, y: padY + usableH * 0.85 };
+        map["Device_5"] = { x: padX + usableW * 0.50, y: padY + usableH * 0.12 }; // Mid-top: Scout Drone
+        map["Device_6"] = { x: padX + usableW * 0.50, y: padY + usableH * 0.92 }; // Mid-bottom: TPU
+    } else {
+        // 8 nodes in distributed ring/mesh layout
+        for (let i = 1; i <= 8; i++) {
+            const angle = ((i - 1) / 8) * Math.PI * 2 - Math.PI / 2;
+            const rx = usableW * 0.44;
+            const ry = usableH * 0.42;
+            map[`Device_${i}`] = {
+                x: width / 2 + Math.cos(angle) * rx,
+                y: height / 2 + Math.sin(angle) * ry,
+            };
         }
-    });
-};
-
-function applyFrame(frameIdx) {
-    if (!currentTrace || !currentTrace.frames) return;
-    if (frameIdx < 0) frameIdx = 0;
-    if (frameIdx >= currentTrace.frames.length) frameIdx = currentTrace.frames.length - 1;
-
-    currentFrameIdx = frameIdx;
-    const frame = currentTrace.frames[frameIdx];
-    if (!frame) return;
-
-    // 1. Update Scrubber UI
-    slider.value = Math.round(frame.t);
-    clockDisplay.textContent = frame.t.toFixed(1);
-
-    // 2. Stage Pill & Explanations
-    activeStagePill.textContent = frame.stage_name || `Stage ${frame.stage_id}`;
-    stageBadgeInline.textContent = `Stage ${frame.stage_id}`;
-    stageBadgeInline.style.backgroundColor = frame.badge_color || "#2563EB";
-    stageDescText.textContent = frame.stage_desc || "";
-
-    // Channel quality pill
-    const jitter = currentTrace.params ? currentTrace.params.channel_jitter_ms : 5.0;
-    if (frame.stage_id === 5) {
-        channelQualityPill.className = "text-xs font-bold mono px-2.5 py-1 rounded-full border border-red-700 bg-red-950/80 text-red-300";
-        channelQualityPill.textContent = "Channel: WATCHDOG ABORT!";
-    } else if (frame.stage_id === 4) {
-        channelQualityPill.className = "text-xs font-bold mono px-2.5 py-1 rounded-full border border-red-700 bg-red-950/80 text-red-300";
-        channelQualityPill.textContent = "Channel: REMOTE STRESSED";
-    } else if (frame.stage_id === 3) {
-        channelQualityPill.className = "text-xs font-bold mono px-2.5 py-1 rounded-full border border-amber-700 bg-amber-950/80 text-amber-300";
-        channelQualityPill.textContent = `Channel: IN-FLIGHT (Jitter: ${jitter.toFixed(1)}ms)`;
-    } else {
-        channelQualityPill.className = "text-xs font-bold mono px-2.5 py-1 rounded-full border border-emerald-700 bg-emerald-950/80 text-emerald-300";
-        channelQualityPill.textContent = `Channel: Nominal (${jitter.toFixed(1)}ms)`;
     }
-
-    // 3. Draw Canvas Mesh Topology
-    drawMeshTopology(frame);
-
-    // 4. Update Gantt Scrubber Line
-    updateGanttCursor(frame.t);
+    return map;
 }
 
-// -------------------------------------------------------------
-// Panel 2: Multi-Node Mesh Topology Canvas Renderer
-// -------------------------------------------------------------
-function getNodePositions(fleetSize, width, height) {
-    // Elegant distributed geometry based on fleet size
-    if (fleetSize === 4) {
-        return {
-            "Device_1": { x: width * 0.22, y: height * 0.50 },
-            "Device_2": { x: width * 0.78, y: height * 0.50 },
-            "Device_3": { x: width * 0.50, y: height * 0.22 },
-            "Device_4": { x: width * 0.50, y: height * 0.80 },
-        };
-    } else if (fleetSize === 6) {
-        return {
-            "Device_1": { x: width * 0.28, y: height * 0.50 },
-            "Device_2": { x: width * 0.72, y: height * 0.50 },
-            "Device_3": { x: width * 0.50, y: height * 0.20 },
-            "Device_4": { x: width * 0.50, y: height * 0.82 },
-            "Device_5": { x: width * 0.12, y: height * 0.25 },
-            "Device_6": { x: width * 0.88, y: height * 0.25 },
-        };
-    } else {
-        // 8 nodes
-        return {
-            "Device_1": { x: width * 0.30, y: height * 0.50 },
-            "Device_2": { x: width * 0.70, y: height * 0.50 },
-            "Device_3": { x: width * 0.50, y: height * 0.18 },
-            "Device_4": { x: width * 0.50, y: height * 0.82 },
-            "Device_5": { x: width * 0.12, y: height * 0.25 },
-            "Device_6": { x: width * 0.88, y: height * 0.25 },
-            "Device_7": { x: width * 0.12, y: height * 0.75 },
-            "Device_8": { x: width * 0.88, y: height * 0.75 },
-        };
-    }
-}
-
-function drawMeshTopology(frame) {
-    if (!ctx) return;
+function renderTopology(snapshot) {
+    if (!ctx || !canvas) return;
     const width = canvas.width;
     const height = canvas.height;
 
-    // Clear Canvas
-    ctx.clearRect(0, 0, width, height);
+    // 1. Pristine White/Slate Canvas Background
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
 
-    // Background Subtle Grid Pattern
-    ctx.strokeStyle = "rgba(31, 41, 55, 0.4)";
+    // Subtle Grid lines
+    ctx.strokeStyle = "#F1F5F9";
     ctx.lineWidth = 1;
-    const gridSize = 40;
+    const gridSize = 28;
     for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
     }
     for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
     }
 
-    const nodes = frame.nodes || {};
-    const links = frame.links || [];
-    const fleetSize = currentTrace.topology ? currentTrace.topology.fleet_size : Object.keys(nodes).length;
-    const positions = getNodePositions(fleetSize, width, height);
+    const nodes = snapshot.nodes || {};
+    const links = snapshot.links || [];
+    const count = snapshot.fleet_size || Object.keys(nodes).length || 4;
+    const positions = getNodePositions(count, width, height);
 
-    // 1. Draw Mesh Links
+    // 2. Draw Wireless Mesh Connections
     links.forEach(link => {
         const p1 = positions[link.source];
         const p2 = positions[link.target];
         if (!p1 || !p2) return;
 
-        const isPrimary = link.is_offload_channel || (link.source === "Device_1" && link.target === "Device_2");
-        ctx.save();
+        const isPrimary = (link.source === "Device_1" && link.target === "Device_2") ||
+                          (link.source === "Device_2" && link.target === "Device_1");
 
-        let strokeColor = "rgba(16, 185, 129, 0.45)"; // green nominal
-        let lineWidth = isPrimary ? 3.5 : 1.5;
+        ctx.save();
+        let strokeColor = "rgba(16, 185, 129, 0.45)"; // Emerald nominal
+        let lineWidth = isPrimary ? 2.5 : 1.2;
 
         if (link.quality === "amber") {
-            strokeColor = "rgba(245, 158, 11, 0.75)";
+            strokeColor = "rgba(245, 158, 11, 0.65)";
         } else if (link.quality === "red") {
-            strokeColor = "rgba(239, 68, 68, 0.85)";
-            if (isPrimary) lineWidth = 4.5;
+            strokeColor = "rgba(244, 63, 94, 0.75)";
+            if (isPrimary) lineWidth = 3.5;
         }
 
         ctx.strokeStyle = strokeColor;
         ctx.lineWidth = lineWidth;
+        ctx.setLineDash(isPrimary ? [] : [4, 4]);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
         ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+    });
 
-        // If primary offload channel in flight (t=33 to 49.5 ms)
-        if (isPrimary && (frame.stage_id === 3 || frame.stage_id === 4)) {
-            // Draw animated traveling packet particle
-            const txPct = frame.active_offload ? (frame.active_offload.progress_pct || 50.0) / 100.0 : 0.5;
-            const packetX = p1.x + (p2.x - p1.x) * txPct;
-            const packetY = p1.y + (p2.y - p1.y) * txPct;
+    // 3. Draw In-Flight Traveling Packets
+    const activeOffloads = snapshot.active_offloads || [];
+    activeOffloads.forEach(packet => {
+        const p1 = positions[packet.source];
+        const p2 = positions[packet.target];
+        if (!p1 || !p2) return;
 
-            // Packet Pulse Glow
-            ctx.fillStyle = "rgba(59, 130, 246, 0.3)";
+        const pct = Math.min(1.0, Math.max(0.0, packet.progress_pct / 100.0));
+        const px = p1.x + (p2.x - p1.x) * pct;
+        const py = p1.y + (p2.y - p1.y) * pct;
+
+        ctx.save();
+
+        if (packet.status === "ABORTED") {
+            // Aborted mid-flight alert burst
+            ctx.fillStyle = "rgba(239, 68, 68, 0.25)";
             ctx.beginPath();
-            ctx.arc(packetX, packetY, 14, 0, Math.PI * 2);
+            ctx.arc(px, py, 18, 0, Math.PI * 2);
             ctx.fill();
 
-            // Core Packet Dot
-            ctx.fillStyle = "#3B82F6";
+            ctx.fillStyle = "#EF4444";
             ctx.beginPath();
-            ctx.arc(packetX, packetY, 7, 0, Math.PI * 2);
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
             ctx.fill();
+
+            ctx.font = "bold 9.5px 'JetBrains Mono', monospace";
+            ctx.fillStyle = "#DC2626";
+            ctx.textAlign = "center";
+            ctx.fillText("⚠️ WATCHDOG ABORT", px, py - 14);
+        } else {
+            // Smooth glowing pulse packet
+            ctx.fillStyle = "rgba(59, 130, 246, 0.25)";
+            ctx.beginPath();
+            ctx.arc(px, py, 14, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#2563EB";
+            ctx.beginPath();
+            ctx.arc(px, py, 6, 0, Math.PI * 2);
+            ctx.fill();
+
             ctx.strokeStyle = "#FFFFFF";
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.8;
             ctx.stroke();
 
             // Label
-            ctx.font = "bold 10px 'JetBrains Mono', monospace";
-            ctx.fillStyle = "#93C5FD";
+            ctx.font = "bold 9px 'JetBrains Mono', monospace";
+            ctx.fillStyle = "#1E40AF";
             ctx.textAlign = "center";
-            ctx.fillText("Perception (16 KB)", packetX, packetY - 14);
-        }
-
-        // Flashing Abort Event Tag (t=49.5 to 52.4 ms)
-        if (isPrimary && frame.stage_id === 5) {
-            const midX = (p1.x + p2.x) / 2;
-            const midY = (p1.y + p2.y) / 2;
-
-            // Warning Banner
-            const bannerW = 230;
-            const bannerH = 26;
-            ctx.fillStyle = "rgba(220, 38, 38, 0.95)";
-            ctx.strokeStyle = "#FCA5A5";
-            ctx.lineWidth = 1.5;
-            roundRect(ctx, midX - bannerW / 2, midY - bannerH / 2, bannerW, bannerH, 4, true, true);
-
-            ctx.font = "bold 11px 'JetBrains Mono', monospace";
-            ctx.fillStyle = "#FFFFFF";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("⚠️ ABORT: REMOTE BOTTLENECK", midX, midY);
-
-            // Red Return Arrow to Node 1
-            ctx.strokeStyle = "#EF4444";
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(p2.x - 20, p2.y + 15);
-            ctx.lineTo(p1.x + 20, p1.y + 15);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
-        // Fallback Saved Tag (t >= 52.4 ms)
-        if (isPrimary && frame.stage_id === 6) {
-            const midX = (p1.x + p2.x) / 2;
-            const midY = (p1.y + p2.y) / 2;
-
-            const bannerW = 200;
-            const bannerH = 24;
-            ctx.fillStyle = "rgba(6, 78, 59, 0.9)";
-            ctx.strokeStyle = "#34D399";
-            ctx.lineWidth = 1.2;
-            roundRect(ctx, midX - bannerW / 2, midY - bannerH / 2, bannerW, bannerH, 4, true, true);
-
-            ctx.font = "bold 10.5px 'JetBrains Mono', monospace";
-            ctx.fillStyle = "#A7F3D0";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("✓ DEADLINE SAVED (+7.6ms)", midX, midY);
+            ctx.fillText(`${packet.task_name || 'Task'} (${packet.payload_kb || 16}KB)`, px, py - 12);
         }
 
         ctx.restore();
     });
 
-    // 2. Draw Nodes
+    // 4. Draw Fleet Nodes as High-End Modern Cards with Vector Icons
     Object.keys(nodes).forEach(devId => {
         const node = nodes[devId];
         const pos = positions[devId];
@@ -475,80 +536,105 @@ function drawMeshTopology(frame) {
 
         ctx.save();
 
-        const boxW = 145;
-        const boxH = 68;
-        const boxX = pos.x - boxW / 2;
-        const boxY = pos.y - boxH / 2;
+        const cardW = 162;
+        const cardH = 76;
+        const cardX = pos.x - cardW / 2;
+        const cardY = pos.y - cardH / 2;
 
-        // Pulsing Ring for Overload or Fallback
+        // Pulsing Ring for Overload / Fallback
         if (isFallback) {
-            ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
+            ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
             ctx.lineWidth = 3;
             ctx.beginPath();
-            roundRect(ctx, boxX - 4, boxY - 4, boxW + 8, boxH + 8, 8, false, true);
+            roundRect(ctx, cardX - 4, cardY - 4, cardW + 8, cardH + 8, 12, false, true);
         } else if (isOverloaded) {
-            ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
+            ctx.strokeStyle = "rgba(244, 63, 94, 0.6)";
             ctx.lineWidth = 3;
             ctx.beginPath();
-            roundRect(ctx, boxX - 4, boxY - 4, boxW + 8, boxH + 8, 8, false, true);
+            roundRect(ctx, cardX - 4, cardY - 4, cardW + 8, cardH + 8, 12, false, true);
         }
 
-        // Node Main Card Body
-        ctx.fillStyle = isHovered ? "#1E293B" : "#0F172A";
-        let borderColor = node.color || "#3B82F6";
-        if (isFallback) borderColor = "#10B981";
-        if (isOverloaded) borderColor = "#EF4444";
+        // Card Drop Shadow
+        ctx.shadowColor = "rgba(0, 0, 0, 0.08)";
+        ctx.shadowBlur = isHovered ? 12 : 6;
+        ctx.shadowOffsetY = isHovered ? 4 : 2;
+
+        // Card Body Fill (Clean Pure White)
+        ctx.fillStyle = "#FFFFFF";
+        let borderColor = isOverloaded ? "#F43F5E" : (isFallback ? "#10B981" : "#E2E8F0");
+        if (isHovered) borderColor = "#3B82F6";
 
         ctx.strokeStyle = borderColor;
-        ctx.lineWidth = isHovered ? 2.5 : 1.8;
-        roundRect(ctx, boxX, boxY, boxW, boxH, 6, true, true);
+        ctx.lineWidth = isHovered ? 2.2 : (isOverloaded || isFallback ? 2.0 : 1.2);
+        roundRect(ctx, cardX, cardY, cardW, cardH, 10, true, true);
 
-        // Node Header Label
-        ctx.font = "bold 11px 'Plus Jakarta Sans', sans-serif";
-        ctx.fillStyle = "#F8FAFC";
+        // Reset shadow for content
+        ctx.shadowColor = "transparent";
+
+        // Draw Physical Vector Icon on Left
+        const iconCenterX = cardX + 26;
+        const iconCenterY = cardY + 28;
+        const iconColor = node.color || "#2563EB";
+        if (window.NodeIconRenderer) {
+            window.NodeIconRenderer.drawNodeIcon(ctx, node.node_type, iconCenterX, iconCenterY, 32, iconColor, animTick);
+        }
+
+        // Node Title & Role Text
+        ctx.font = "bold 10.5px 'Plus Jakarta Sans', sans-serif";
+        ctx.fillStyle = "#0F172A";
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
-        ctx.fillText(node.name ? node.name.split(":")[0] : devId, boxX + 8, boxY + 8);
+        const shortName = node.name ? node.name.split(":")[0] : devId;
+        ctx.fillText(shortName, cardX + 50, cardY + 10);
 
-        // Hardware Subtitle
         ctx.font = "9px 'Plus Jakarta Sans', sans-serif";
-        ctx.fillStyle = "#94A3B8";
-        const shortRole = node.role ? node.role.split("/")[0].trim() : "Edge Node";
-        ctx.fillText(shortRole, boxX + 8, boxY + 22);
+        ctx.fillStyle = "#64748B";
+        const shortRole = node.role ? (node.role.length > 20 ? node.role.substring(0, 18) + '..' : node.role) : "Node";
+        ctx.fillText(shortRole, cardX + 50, cardY + 23);
 
-        // Mini CPU Meter Bar
-        const barW = boxW - 16;
-        const barH = 5;
-        const barX = boxX + 8;
-        const barY = boxY + 36;
+        // Dual CPU & GPU Meter Bars
+        const barW = cardW - 56;
+        const barH = 4;
+        const barX = cardX + 50;
+        const barY = cardY + 37;
 
-        ctx.fillStyle = "#1E293B";
+        // CPU Bar Track
+        ctx.fillStyle = "#F1F5F9";
         roundRect(ctx, barX, barY, barW, barH, 2, true, false);
-
+        // CPU Bar Fill
         const cpuFillW = Math.min(barW, (node.cpu / 100.0) * barW);
-        ctx.fillStyle = node.cpu > 80 ? "#EF4444" : (node.cpu > 60 ? "#F59E0B" : "#3B82F6");
+        ctx.fillStyle = node.cpu > 80 ? "#F43F5E" : (node.cpu > 60 ? "#F59E0B" : "#10B981");
         roundRect(ctx, barX, barY, cpuFillW, barH, 2, true, false);
 
-        // Text telemetry footer inside node
-        ctx.font = "bold 9px 'JetBrains Mono', monospace";
-        ctx.fillStyle = "#E2E8F0";
-        ctx.fillText(`CPU ${Math.round(node.cpu)}%`, barX, barY + 12);
+        // GPU Bar Track
+        const gpuBarY = barY + 7;
+        ctx.fillStyle = "#F1F5F9";
+        roundRect(ctx, barX, gpuBarY, barW, barH, 2, true, false);
+        // GPU Bar Fill
+        const gpuFillW = Math.min(barW, (node.gpu / 100.0) * barW);
+        ctx.fillStyle = node.gpu > 80 ? "#F43F5E" : (node.gpu > 60 ? "#F59E0B" : "#3B82F6");
+        roundRect(ctx, barX, gpuBarY, gpuFillW, barH, 2, true, false);
 
-        ctx.fillStyle = "#94A3B8";
+        // Footer telemetry: CPU %, Temp °C, Active Task
+        ctx.font = "bold 8.5px 'JetBrains Mono', monospace";
+        ctx.fillStyle = "#334155";
+        ctx.fillText(`C:${Math.round(node.cpu)}% G:${Math.round(node.gpu)}%`, cardX + 50, cardY + 54);
+
         ctx.textAlign = "right";
-        ctx.fillText(`${node.temp_c ? node.temp_c.toFixed(0) : 42}°C`, boxX + boxW - 8, barY + 12);
+        ctx.fillStyle = node.temp_c > 75 ? "#E11D48" : "#64748B";
+        ctx.fillText(`${node.temp_c ? node.temp_c.toFixed(0) : 40}°C`, cardX + cardW - 8, cardY + 54);
 
-        // Fallback Badge Top-Right
+        // Status Tag Top-Right
         if (isFallback) {
             ctx.font = "bold 8px 'JetBrains Mono', monospace";
-            ctx.fillStyle = "#10B981";
+            ctx.fillStyle = "#059669";
             ctx.textAlign = "right";
-            ctx.fillText("● FALLBACK", boxX + boxW - 8, boxY + 8);
+            ctx.fillText("● FALLBACK", cardX + cardW - 8, cardY + 10);
         } else if (isOverloaded) {
             ctx.font = "bold 8px 'JetBrains Mono', monospace";
-            ctx.fillStyle = "#EF4444";
+            ctx.fillStyle = "#E11D48";
             ctx.textAlign = "right";
-            ctx.fillText("● STRESSED", boxX + boxW - 8, boxY + 8);
+            ctx.fillText("● STRESSED", cardX + cardW - 8, cardY + 10);
         }
 
         ctx.restore();
@@ -557,267 +643,229 @@ function drawMeshTopology(frame) {
 
 function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
     ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
+    ctx.roundRect(x, y, width, height, radius);
     if (fill) ctx.fill();
     if (stroke) ctx.stroke();
 }
 
 // -------------------------------------------------------------
-// Interactive Node Tooltip on Hover
+// Interactive Canvas Mouse Hover Tooltip
 // -------------------------------------------------------------
-function handleCanvasMouseMove(e) {
-    if (!currentTrace || !currentTrace.frames) return;
-    const frame = currentTrace.frames[currentFrameIdx];
-    if (!frame || !frame.nodes) return;
-
+canvas.addEventListener("mousemove", (e) => {
+    if (!latestSnapshot) return;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const mouseX = (e.clientX - rect.left) * scaleX;
-    const mouseY = (e.clientY - rect.top) * scaleY;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-    const fleetSize = currentTrace.topology ? currentTrace.topology.fleet_size : Object.keys(frame.nodes).length;
-    const positions = getNodePositions(fleetSize, canvas.width, canvas.height);
+    const count = latestSnapshot.fleet_size || 4;
+    const positions = getNodePositions(count, canvas.width, canvas.height);
 
     let found = null;
-    const boxW = 145;
-    const boxH = 68;
+    const cardW = 162;
+    const cardH = 76;
 
-    for (const [devId, pos] of Object.entries(positions)) {
-        if (
-            mouseX >= pos.x - boxW / 2 &&
-            mouseX <= pos.x + boxW / 2 &&
-            mouseY >= pos.y - boxH / 2 &&
-            mouseY <= pos.y + boxH / 2
-        ) {
-            found = frame.nodes[devId];
-            break;
+    Object.keys(positions).forEach(devId => {
+        const p = positions[devId];
+        if (mx >= p.x - cardW / 2 && mx <= p.x + cardW / 2 &&
+            my >= p.y - cardH / 2 && my <= p.y + cardH / 2) {
+            found = latestSnapshot.nodes ? latestSnapshot.nodes[devId] : null;
         }
-    }
+    });
 
-    if (found) {
-        hoveredNode = found;
-        showTooltip(e.clientX, e.clientY, found);
-    } else {
-        hoveredNode = null;
+    hoveredNode = found;
+
+    if (found && tooltip) {
+        document.getElementById("tt-name").textContent = found.name || found.id;
+        document.getElementById("tt-type").textContent = (found.node_type || "node").toUpperCase();
+        document.getElementById("tt-role").textContent = found.role || "Edge Node";
+        document.getElementById("tt-cpu").textContent = `${Math.round(found.cpu)}%`;
+        document.getElementById("tt-gpu").textContent = `${Math.round(found.gpu)}%`;
+        document.getElementById("tt-temp").textContent = `${found.temp_c.toFixed(1)}°C`;
+        document.getElementById("tt-task").textContent = found.active_task || "Idle";
+        document.getElementById("tt-queue").textContent = `${found.queue_len || 0} tasks (${(found.queue_tasks || []).join(', ') || 'empty'})`;
+        document.getElementById("tt-fallbacks").textContent = `${found.total_fallbacks || 0}`;
+
+        const parentRect = canvas.parentElement.getBoundingClientRect();
+        tooltip.style.left = `${Math.min(mx + 15, parentRect.width - 230)}px`;
+        tooltip.style.top = `${Math.min(my + 15, parentRect.height - 190)}px`;
+        tooltip.classList.remove("hidden");
+    } else if (tooltip) {
         tooltip.classList.add("hidden");
     }
-}
+});
 
-function handleCanvasMouseLeave() {
+canvas.addEventListener("mouseleave", () => {
     hoveredNode = null;
-    tooltip.classList.add("hidden");
-}
-
-function showTooltip(clientX, clientY, node) {
-    ttTitle.textContent = node.name || node.id;
-    ttRole.textContent = `${node.role || "Edge Compute Node"} · ${node.hardware || "Hardware"}`;
-    ttCpu.textContent = `${node.cpu.toFixed(1)}%`;
-    ttCpuBar.style.width = `${Math.min(100, node.cpu)}%`;
-    ttGpu.textContent = `${node.gpu.toFixed(1)}%`;
-    ttGpuBar.style.width = `${Math.min(100, node.gpu)}%`;
-    ttTemp.textContent = `${node.temp_c ? node.temp_c.toFixed(1) : "45.0"} °C`;
-    ttQueue.textContent = `${node.queue_len || 0} tasks`;
-    ttTask.textContent = node.active_task || "Idle";
-    ttStatus.textContent = node.status || "HEALTHY";
-
-    if (node.status === "CONTENDED") {
-        ttStatus.className = "text-red-400 font-bold";
-    } else if (node.fallback_active) {
-        ttStatus.className = "text-emerald-400 font-bold";
-    } else {
-        ttStatus.className = "text-blue-400 font-bold";
-    }
-
-    // Position Tooltip
-    const parentRect = canvas.parentElement.getBoundingClientRect();
-    const x = clientX - parentRect.left + 15;
-    const y = clientY - parentRect.top + 15;
-
-    tooltip.style.left = `${Math.min(x, parentRect.width - 240)}px`;
-    tooltip.style.top = `${Math.min(y, parentRect.height - 180)}px`;
-    tooltip.classList.remove("hidden");
-}
+    if (tooltip) tooltip.classList.add("hidden");
+});
 
 // -------------------------------------------------------------
-// Panel 3: Performance Cards Update
+// Live Plotly Rolling Chart (White Theme)
 // -------------------------------------------------------------
-function updatePerformanceCards(metricsGg, metricsEdf, defaultEvidence = "SIMULATED") {
-    if (!metricsGg || !metricsEdf) return;
+function initChart() {
+    const container = document.getElementById("live-chart-container");
+    if (!container || !window.Plotly) return;
 
-    const ggWcrt = (metricsGg.wcrt_ms !== undefined ? metricsGg.wcrt_ms : metricsGg.worst_case_response_time_ms);
-    const edfWcrt = (metricsEdf.wcrt_ms !== undefined ? metricsEdf.wcrt_ms : metricsEdf.worst_case_response_time_ms);
-    const ggMisses = metricsGg.deadline_missed_count;
-    const ggCritMisses = metricsGg.critical_misses;
-    const ggFallbacks = metricsGg.total_fallbacks;
-
-    const edfMisses = metricsEdf.deadline_missed_count;
-    const edfCritMisses = metricsEdf.critical_misses;
-    const edfFallbacks = metricsEdf.total_fallbacks;
-
-    // Update evidence badge pills if elements exist
-    const ggBadge = document.getElementById("stat-gg-badge");
-    if (ggBadge) {
-        ggBadge.textContent = metricsGg.evidence || defaultEvidence;
-    }
-    const edfBadge = document.getElementById("stat-edf-badge");
-    if (edfBadge) {
-        edfBadge.textContent = metricsEdf.evidence || defaultEvidence;
-    }
-
-    // GhostGuard Card
-    if (statGgMisses) {
-        statGgMisses.textContent = (ggMisses !== undefined && ggCritMisses !== undefined)
-            ? `${ggMisses} Deadline Misses (${ggCritMisses} Critical)`
-            : "—";
-    }
-    if (statGgWcrt) {
-        statGgWcrt.textContent = (ggWcrt !== undefined && ggWcrt !== null)
-            ? `${Number(ggWcrt).toFixed(1)} ms`
-            : "Not computed";
-    }
-    if (statGgFallbacks) {
-        statGgFallbacks.textContent = (ggFallbacks !== undefined && ggFallbacks !== null)
-            ? `${ggFallbacks}`
-            : "0";
-    }
-
-    // EDF Card
-    if (statEdfMisses) {
-        statEdfMisses.textContent = (edfMisses !== undefined && edfCritMisses !== undefined)
-            ? `${edfMisses} Deadline Misses (${edfCritMisses} Critical)`
-            : "—";
-    }
-    if (statEdfWcrt) {
-        statEdfWcrt.textContent = (edfWcrt !== undefined && edfWcrt !== null)
-            ? `${Number(edfWcrt).toFixed(1)} ms`
-            : "Not computed";
-    }
-    if (statEdfFallbacks) {
-        statEdfFallbacks.textContent = (edfFallbacks !== undefined && edfFallbacks !== null)
-            ? `${edfFallbacks}`
-            : "0";
-    }
-}
-
-// -------------------------------------------------------------
-// Panel 4: Synchronized Dual-Timeline Gantt Chart (Plotly.js)
-// -------------------------------------------------------------
-function renderGanttChart(tasksGg, tasksEdf) {
-    const container = document.getElementById("gantt-container");
-    if (!container) return;
-
-    const taskStages = [
-        "Sense",
-        "ObstacleDetection",
-        "Perception",
-        "Tracking",
-        "PathPlanning",
-        "Actuation"
+    const data = [
+        {
+            x: [],
+            y: [],
+            name: "GhostGuard WCRT (ms)",
+            type: "scatter",
+            mode: "lines",
+            line: { color: "#059669", width: 2.5 },
+        },
+        {
+            x: [],
+            y: [],
+            name: "EDF WCRT (ms)",
+            type: "scatter",
+            mode: "lines",
+            line: { color: "#E11D48", width: 2.5, dash: "dot" },
+        },
+        {
+            x: [],
+            y: [],
+            name: "Node 1 CPU (%)",
+            type: "scatter",
+            mode: "lines",
+            yaxis: "y2",
+            line: { color: "#3B82F6", width: 1.5 },
+        }
     ];
 
-    const traces = [];
-
-    // Helper to map tasks to Gantt bar shapes
-    function addSchedulerBars(tasks, yOffset, schedulerPrefix) {
-        tasks.forEach(t => {
-            const stageName = t.task_name || "Task";
-            const yPos = `${schedulerPrefix}: ${stageName}`;
-
-            let color = "#3B82F6"; // nominal blue
-            if (t.is_degraded || t.category === "DEGRADED_FALLBACK") {
-                color = "#10B981"; // green fallback
-            } else if (t.category === "OFFLOADED_REMOTE") {
-                color = "#8B5CF6"; // purple offload
-            } else if (!t.deadline_met || t.category === "DEADLINE_MISSED") {
-                color = "#EF4444"; // red miss
-            }
-
-            traces.push({
-                x: [t.duration_ms],
-                y: [yPos],
-                base: [t.start_time_ms],
-                type: "bar",
-                orientation: "h",
-                marker: {
-                    color: color,
-                    line: { color: "#0B0F17", width: 1 }
-                },
-                hoverinfo: "text",
-                hovertext: `<b>${stageName} (${schedulerPrefix})</b><br>` +
-                           `Start: ${t.start_time_ms.toFixed(1)}ms | Finish: ${t.finish_time_ms.toFixed(1)}ms<br>` +
-                           `Release: ${t.release_time_ms.toFixed(1)}ms | Deadline: ${t.deadline_ms.toFixed(1)}ms<br>` +
-                           `Slack: ${t.slack_ms >= 0 ? '+' : ''}${t.slack_ms.toFixed(1)}ms`,
-                showlegend: false
-            });
-        });
-    }
-
-    if (tasksGg) addSchedulerBars(tasksGg, 0, "GhostGuard");
-    if (tasksEdf) addSchedulerBars(tasksEdf, 1, "EDF");
-
-    const yCategories = [];
-    taskStages.forEach(s => yCategories.push(`EDF: ${s}`));
-    taskStages.forEach(s => yCategories.push(`GhostGuard: ${s}`));
-
     const layout = {
-        barmode: "stack",
-        height: 440,
-        margin: { l: 170, r: 30, t: 20, b: 40 },
-        paper_bgcolor: "#0B0F17",
-        plot_bgcolor: "#111827",
+        paper_bgcolor: "#FFFFFF",
+        plot_bgcolor: "#FAFAFA",
+        margin: { l: 40, r: 40, t: 15, b: 30 },
+        showlegend: true,
+        legend: { orientation: "h", y: 1.15, x: 0.0, font: { size: 10, family: "Plus Jakarta Sans" } },
         xaxis: {
-            title: { text: "Simulation Clock Time (ms)", font: { color: "#9CA3AF", family: "JetBrains Mono", size: 11 } },
-            range: [0, 100],
-            dtick: 10,
-            gridcolor: "#1F2937",
-            tickfont: { color: "#9CA3AF", family: "JetBrains Mono", size: 10 },
-            zeroline: false
+            title: "Sim Time (ms)",
+            titlefont: { size: 10 },
+            tickfont: { size: 9, family: "JetBrains Mono" },
+            gridcolor: "#E2E8F0",
+            zerolinecolor: "#CBD5E1",
         },
         yaxis: {
-            categoryorder: "array",
-            categoryarray: yCategories,
-            gridcolor: "#1F2937",
-            tickfont: { color: "#E5E7EB", family: "Plus Jakarta Sans", size: 11 }
+            title: "WCRT (ms)",
+            titlefont: { size: 10, color: "#059669" },
+            tickfont: { size: 9, family: "JetBrains Mono" },
+            gridcolor: "#E2E8F0",
+            range: [0, 100],
         },
-        shapes: [
-            // Vertical scrubber line
-            {
-                type: "line",
-                x0: 0,
-                x1: 0,
-                y0: 0,
-                y1: 1,
-                yref: "paper",
-                line: {
-                    color: "#EF4444",
-                    width: 2.5,
-                    dash: "solid"
-                },
-                name: "scrubber_cursor"
-            }
-        ]
+        yaxis2: {
+            title: "CPU %",
+            titlefont: { size: 10, color: "#3B82F6" },
+            tickfont: { size: 9, family: "JetBrains Mono" },
+            overlaying: "y",
+            side: "right",
+            range: [0, 100],
+            showgrid: false,
+        }
     };
 
-    const config = { responsive: true, displayModeBar: false };
-    Plotly.newPlot("gantt-container", traces, layout, config);
+    Plotly.newPlot(container, data, layout, { responsive: true, displayModeBar: false });
 }
 
-function updateGanttCursor(timeMs) {
-    const container = document.getElementById("gantt-container");
-    if (!container || !container.data) return;
+function resetChart() {
+    chartHistory.times = [];
+    chartHistory.ggWcrt = [];
+    chartHistory.edfWcrt = [];
+    chartHistory.dev1Cpu = [];
+    chartHistory.dev2Cpu = [];
 
-    Plotly.relayout("gantt-container", {
-        "shapes[0].x0": timeMs,
-        "shapes[0].x1": timeMs
+    const container = document.getElementById("live-chart-container");
+    if (container && window.Plotly) {
+        Plotly.update(container, {
+            x: [[], [], []],
+            y: [[], [], []]
+        });
+    }
+}
+
+function recordChartHistory(snapshot) {
+    const t = snapshot.current_time_ms;
+    const gg = snapshot.metrics_gg || {};
+    const edf = snapshot.metrics_edf || {};
+    const dev1 = snapshot.nodes ? snapshot.nodes["Device_1"] : null;
+
+    chartHistory.times.push(t);
+    chartHistory.ggWcrt.push(gg.wcrt_ms || 0);
+    chartHistory.edfWcrt.push(edf.wcrt_ms || 0);
+    chartHistory.dev1Cpu.push(dev1 ? dev1.cpu : 0);
+
+    // Keep sliding window of last 100 points
+    if (chartHistory.times.length > 100) {
+        chartHistory.times.shift();
+        chartHistory.ggWcrt.shift();
+        chartHistory.edfWcrt.shift();
+        chartHistory.dev1Cpu.shift();
+    }
+
+    const container = document.getElementById("live-chart-container");
+    if (container && window.Plotly && chartHistory.times.length % 2 === 0) {
+        Plotly.update(container, {
+            x: [chartHistory.times, chartHistory.times, chartHistory.times],
+            y: [chartHistory.ggWcrt, chartHistory.edfWcrt, chartHistory.dev1Cpu]
+        });
+    }
+}
+
+// -------------------------------------------------------------
+// Setup Event Listeners
+// -------------------------------------------------------------
+function setupEventListeners() {
+    // Play/Pause
+    btnPlayPause.addEventListener("click", togglePlayPause);
+
+    // Step Forward (+10ms)
+    btnStep.addEventListener("click", () => {
+        pauseSimulation();
+        stepSimulation(10.0);
     });
+
+    // Reset
+    btnReset.addEventListener("click", resetSimulation);
+
+    // Speed Selector Buttons
+    speedButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            speedButtons.forEach(b => {
+                b.classList.remove("bg-white", "text-blue-700", "shadow-sm");
+                b.classList.add("text-slate-600");
+            });
+            btn.classList.remove("text-slate-600");
+            btn.classList.add("bg-white", "text-blue-700", "shadow-sm");
+            simulationSpeed = parseFloat(btn.dataset.speed);
+        });
+    });
+
+    // Fleet Size Selector
+    selectFleetSize.addEventListener("change", (e) => {
+        fleetSize = parseInt(e.target.value, 10);
+        resetSimulation();
+    });
+
+    // Fault Injection Triggers
+    if (btnFaultGpu) {
+        btnFaultGpu.addEventListener("click", () => {
+            injectFault("Device_1", 0.95, 0.95, 180.0, 12.0);
+        });
+    }
+    if (btnFaultServer) {
+        btnFaultServer.addEventListener("click", () => {
+            injectFault("Device_2", 0.98, 0.98, 160.0, 15.0);
+        });
+    }
+    if (btnFaultJitter) {
+        btnFaultJitter.addEventListener("click", () => {
+            injectFault("Device_1", 0.85, 0.85, 200.0, 25.0);
+        });
+    }
+    if (btnFaultThermal) {
+        btnFaultThermal.addEventListener("click", () => {
+            injectFault("Device_1", 0.99, 0.99, 250.0, 10.0);
+        });
+    }
 }

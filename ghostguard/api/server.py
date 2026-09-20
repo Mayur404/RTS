@@ -112,6 +112,389 @@ def _build_scheduler(name: str):
 
 
 # -------------------------------------------------------------
+# Continuous Live Simulation Manager & Endpoints
+# -------------------------------------------------------------
+NODE_METADATA = {
+    "Device_1": {
+        "name": "Node 1: Aerial Drone (Quadcopter)",
+        "role": "Autonomous Aerial Perception",
+        "node_type": "drone",
+        "hardware": "Jetson-Orin-Nano",
+        "color": "#3B82F6",
+    },
+    "Device_2": {
+        "name": "Node 2: Edge Server (GPU Rack)",
+        "role": "Edge AI GPU Cluster Candidate",
+        "node_type": "server",
+        "hardware": "Jetson-AGX-Orin",
+        "color": "#10B981",
+    },
+    "Device_3": {
+        "name": "Node 3: Ground Rover (UGV)",
+        "role": "Mobile Obstacle Tracking Rover",
+        "node_type": "rover",
+        "hardware": "Raspberry-Pi-5",
+        "color": "#8B5CF6",
+    },
+    "Device_4": {
+        "name": "Node 4: Robotic Arm (Manipulator)",
+        "role": "Motion Actuation & Feed-Forward",
+        "node_type": "arm",
+        "hardware": "Jetson-Orin-Nano",
+        "color": "#EC4899",
+    },
+    "Device_5": {
+        "name": "Node 5: Auxiliary Drone",
+        "role": "Secondary Aerial Scout",
+        "node_type": "drone",
+        "hardware": "Jetson-Xavier-NX",
+        "color": "#F59E0B",
+    },
+    "Device_6": {
+        "name": "Node 6: Coral TPU Node",
+        "role": "Quantized Edge TPU Filter",
+        "node_type": "chip",
+        "hardware": "Coral-Edge-TPU",
+        "color": "#06B6D4",
+    },
+    "Device_7": {
+        "name": "Node 7: Ground Station",
+        "role": "Central Mesh Coordinator",
+        "node_type": "server",
+        "hardware": "Ground-Station",
+        "color": "#6366F1",
+    },
+    "Device_8": {
+        "name": "Node 8: Field Rover 2",
+        "role": "Redundant Telemetry Worker",
+        "node_type": "rover",
+        "hardware": "Jetson-Nano",
+        "color": "#14B8A6",
+    },
+}
+
+
+class LiveStartRequest(BaseModel):
+    fleet_size: int = Field(default=4, ge=2, le=8)
+    seed: int = Field(default=42, ge=0)
+    horizon_ms: float = Field(default=3000.0, gt=100.0)
+    enable_contention: bool = Field(default=True)
+    fault_time_ms: float = Field(default=25.0, ge=0.0)
+    contention_magnitude: float = Field(default=0.90, ge=0.0, le=1.0)
+    target_node: str = Field(default="Device_1")
+
+
+class LiveStepRequest(BaseModel):
+    delta_ms: float = Field(default=10.0, gt=0.0, le=200.0)
+
+
+class LiveFaultRequest(BaseModel):
+    target_node: str = Field(default="Device_1")
+    cpu_load: float = Field(default=0.95, ge=0.0, le=1.0)
+    gpu_load: float = Field(default=0.95, ge=0.0, le=1.0)
+    duration_ms: float = Field(default=180.0, gt=0.0)
+    network_delay_ms: float = Field(default=15.0, ge=0.0)
+
+
+class LiveSimulationSession:
+    """Manages active live continuous simulation state for GhostGuard and Baseline."""
+
+    def __init__(
+        self,
+        fleet_size: int = 4,
+        seed: int = 42,
+        horizon_ms: float = 3000.0,
+        enable_contention: bool = True,
+        fault_time_ms: float = 25.0,
+        contention_magnitude: float = 0.90,
+        target_node: str = "Device_1",
+    ):
+        self.fleet_size = fleet_size
+        self.seed = seed
+        self.horizon_ms = horizon_ms
+        self.target_node = target_node
+        self.current_time_ms = 0.0
+        self.step_size_ms = 10.0
+
+        config_gg = GhostGuardConfig(simulation_duration_ms=horizon_ms)
+        config_edf = GhostGuardConfig(simulation_duration_ms=horizon_ms)
+
+        self.sim_gg = DiscreteEventSimulator(config=config_gg, seed=seed, fleet_size=fleet_size)
+        self.sim_edf = DiscreteEventSimulator(config=config_edf, seed=seed, fleet_size=fleet_size)
+
+        self.sim_gg.schedule_periodic_tasks(duration_ms=horizon_ms)
+        self.sim_edf.schedule_periodic_tasks(duration_ms=horizon_ms)
+
+        if enable_contention:
+            self.sim_gg.schedule_contention_burst(
+                target_device_id=target_node,
+                start_time_ms=fault_time_ms,
+                duration_ms=180.0,
+                cpu_load=contention_magnitude,
+                gpu_load=min(1.0, contention_magnitude + 0.05),
+                network_delay_ms=12.0,
+            )
+            self.sim_edf.schedule_contention_burst(
+                target_device_id=target_node,
+                start_time_ms=fault_time_ms,
+                duration_ms=180.0,
+                cpu_load=contention_magnitude,
+                gpu_load=min(1.0, contention_magnitude + 0.05),
+                network_delay_ms=12.0,
+            )
+            sec_target = "Device_2" if fleet_size >= 2 else target_node
+            self.sim_gg.schedule_contention_burst(
+                target_device_id=sec_target,
+                start_time_ms=fault_time_ms + 20.0,
+                duration_ms=160.0,
+                cpu_load=0.98,
+                gpu_load=0.98,
+                network_delay_ms=15.0,
+            )
+            self.sim_edf.schedule_contention_burst(
+                target_device_id=sec_target,
+                start_time_ms=fault_time_ms + 20.0,
+                duration_ms=160.0,
+                cpu_load=0.98,
+                gpu_load=0.98,
+                network_delay_ms=15.0,
+            )
+
+        self.sched_gg = GhostGuardScheduler(
+            risk_threshold=0.60,
+            reliability_threshold=0.70,
+            safety_margin_ms=3.0,
+        )
+        self.sched_edf = EDFScheduler()
+
+        self.sim_gg.attach_scheduler(self.sched_gg)
+        self.sim_edf.attach_scheduler(self.sched_edf)
+
+        self._last_event_idx_gg = 0
+
+    def step(self, delta_ms: float = 10.0) -> Dict[str, Any]:
+        next_t = min(self.horizon_ms, self.current_time_ms + delta_ms)
+        if next_t > self.current_time_ms:
+            self.sim_gg.run(duration_ms=next_t)
+            self.sim_edf.run(duration_ms=next_t)
+            self.current_time_ms = next_t
+        return self.get_snapshot()
+
+    def inject_fault(self, target_dev_id: str, cpu: float, gpu: float, duration_ms: float, delay_ms: float):
+        self.sim_gg.schedule_contention_burst(
+            target_device_id=target_dev_id,
+            start_time_ms=self.current_time_ms,
+            duration_ms=duration_ms,
+            cpu_load=cpu,
+            gpu_load=gpu,
+            network_delay_ms=delay_ms,
+        )
+        self.sim_edf.schedule_contention_burst(
+            target_device_id=target_dev_id,
+            start_time_ms=self.current_time_ms,
+            duration_ms=duration_ms,
+            cpu_load=cpu,
+            gpu_load=gpu,
+            network_delay_ms=delay_ms,
+        )
+
+    def get_snapshot(self) -> Dict[str, Any]:
+        nodes = {}
+        for dev_id, dev in self.sim_gg.devices.items():
+            cpu = round(dev.resources.get_effective_cpu_utilization() * 100.0, 1)
+            gpu = round(dev.resources.get_effective_gpu_utilization() * 100.0, 1)
+            temp_c = round(dev.resources.temperature_c, 1)
+            meta = NODE_METADATA.get(dev_id, {
+                "name": f"{dev_id}: Generic Node",
+                "role": "Edge Worker",
+                "node_type": "rover",
+                "hardware": "Generic-ARM",
+                "color": "#3B82F6",
+            })
+
+            running_names = [t.task_name for t in dev.running_tasks]
+            queue_names = [t.task_name for t in dev.ready_queue]
+            active_task = running_names[0] if running_names else (queue_names[0] if queue_names else "Idle")
+
+            is_overloaded = (cpu > 80.0 or gpu > 85.0)
+            fallback_active = any(t.is_degraded for t in list(dev.running_tasks) + list(dev.ready_queue))
+
+            status_str = "FALLBACK_ACTIVE" if fallback_active else ("OVERLOADED" if is_overloaded else "NOMINAL")
+
+            nodes[dev_id] = {
+                "id": dev_id,
+                "name": meta["name"],
+                "role": meta["role"],
+                "node_type": meta["node_type"],
+                "hardware": meta["hardware"],
+                "color": meta["color"],
+                "cpu": cpu,
+                "gpu": gpu,
+                "temp_c": temp_c,
+                "active_task": active_task,
+                "running_tasks": running_names,
+                "queue_len": len(dev.ready_queue),
+                "queue_tasks": queue_names[:4],
+                "total_fallbacks": dev.total_fallbacks,
+                "total_offloads": dev.total_offloads,
+                "is_overloaded": is_overloaded,
+                "fallback_active": fallback_active,
+                "status": status_str,
+            }
+
+        # Links and in-flight offloaded packets
+        links = []
+        active_offloads = []
+        for dev_id, dev in self.sim_gg.devices.items():
+            for nid, neighbor in dev.neighbors.items():
+                if dev_id < nid:
+                    target_dev = self.sim_gg.devices.get(nid)
+                    quality = "green"
+                    if neighbor.reliability_score < 0.70:
+                        quality = "amber"
+                    if target_dev and (target_dev.resources.get_effective_cpu_utilization() > 0.85 or target_dev.resources.get_effective_gpu_utilization() > 0.90):
+                        quality = "red"
+                    links.append({
+                        "source": dev_id,
+                        "target": nid,
+                        "reliability": round(neighbor.reliability_score, 2),
+                        "quality": quality,
+                        "bandwidth_mbps": dev.resources.hw.bandwidth_mbps,
+                    })
+
+            for task_id, offload in dev.offloaded_tasks.items():
+                status_val = offload.get("status", "IN_FLIGHT")
+                if status_val == "IN_FLIGHT":
+                    target_id = offload.get("target_id")
+                    dispatch_t = offload.get("dispatch_time_ms", self.current_time_ms)
+                    comm_delay = offload.get("comm_delay_ms", 6.0)
+                    elapsed = max(0.0, self.current_time_ms - dispatch_t)
+                    pct = min(100.0, round((elapsed / max(0.1, comm_delay)) * 100.0, 1))
+                    active_offloads.append({
+                        "task_id": task_id,
+                        "source": dev_id,
+                        "target": target_id,
+                        "progress_pct": pct,
+                        "task_name": offload.get("task_name", "Perception"),
+                        "payload_kb": 16,
+                        "status": "IN_FLIGHT"
+                    })
+                elif status_val == "ABORTED":
+                    active_offloads.append({
+                        "task_id": task_id,
+                        "source": dev_id,
+                        "target": offload.get("target_id"),
+                        "progress_pct": 100.0,
+                        "task_name": offload.get("task_name", "Perception"),
+                        "payload_kb": 16,
+                        "status": "ABORTED"
+                    })
+
+        new_events = self.sim_gg.telemetry_log[self._last_event_idx_gg:]
+        self._last_event_idx_gg = len(self.sim_gg.telemetry_log)
+
+        m_gg = self.sim_gg.compute_metrics()
+        m_edf = self.sim_edf.compute_metrics()
+
+        return {
+            "current_time_ms": round(self.current_time_ms, 2),
+            "horizon_ms": self.horizon_ms,
+            "fleet_size": self.fleet_size,
+            "nodes": nodes,
+            "links": links,
+            "active_offloads": active_offloads,
+            "step_events": new_events,
+            "metrics_gg": {
+                "completed": m_gg.get("completed_tasks", 0),
+                "missed": m_gg.get("deadline_missed_count", 0),
+                "critical_misses": m_gg.get("critical_misses", 0),
+                "wcrt_ms": m_gg.get("worst_case_response_time_ms", 0.0),
+                "fallbacks": m_gg.get("total_fallbacks", 0),
+                "offloads": m_gg.get("total_offloads", 0),
+                "dmr_pct": round(m_gg.get("deadline_miss_ratio", 0.0) * 100.0, 2),
+                "avg_utility": m_gg.get("avg_utility", 1.0),
+            },
+            "metrics_edf": {
+                "completed": m_edf.get("completed_tasks", 0),
+                "missed": m_edf.get("deadline_missed_count", 0),
+                "critical_misses": m_edf.get("critical_misses", 0),
+                "wcrt_ms": m_edf.get("worst_case_response_time_ms", 0.0),
+                "fallbacks": m_edf.get("total_fallbacks", 0),
+                "offloads": m_edf.get("total_offloads", 0),
+                "dmr_pct": round(m_edf.get("deadline_miss_ratio", 0.0) * 100.0, 2),
+                "avg_utility": m_edf.get("avg_utility", 1.0),
+            },
+            "status": "RUNNING" if self.current_time_ms < self.horizon_ms else "COMPLETED",
+        }
+
+
+_LIVE_SESSION: Optional[LiveSimulationSession] = None
+
+
+@app.post("/api/live/start")
+def live_start(req: LiveStartRequest):
+    """Initializes a new continuous live simulation session."""
+    global _LIVE_SESSION
+    _LIVE_SESSION = LiveSimulationSession(
+        fleet_size=req.fleet_size,
+        seed=req.seed,
+        horizon_ms=req.horizon_ms,
+        enable_contention=req.enable_contention,
+        fault_time_ms=req.fault_time_ms,
+        contention_magnitude=req.contention_magnitude,
+        target_node=req.target_node,
+    )
+    return _LIVE_SESSION.get_snapshot()
+
+
+@app.post("/api/live/step")
+def live_step(req: LiveStepRequest):
+    """Advances continuous live simulation by delta_ms and streams real-time updates."""
+    global _LIVE_SESSION
+    if _LIVE_SESSION is None:
+        _LIVE_SESSION = LiveSimulationSession()
+    return _LIVE_SESSION.step(req.delta_ms)
+
+
+@app.post("/api/live/inject_fault")
+def live_inject_fault(req: LiveFaultRequest):
+    """Dynamically injects contention or network stress at current live simulation clock."""
+    global _LIVE_SESSION
+    if _LIVE_SESSION is None:
+        _LIVE_SESSION = LiveSimulationSession()
+    _LIVE_SESSION.inject_fault(
+        target_dev_id=req.target_node,
+        cpu=req.cpu_load,
+        gpu=req.gpu_load,
+        duration_ms=req.duration_ms,
+        delay_ms=req.network_delay_ms,
+    )
+    return {
+        "status": "injected",
+        "target_node": req.target_node,
+        "current_time_ms": _LIVE_SESSION.current_time_ms,
+        "cpu_load": req.cpu_load,
+        "gpu_load": req.gpu_load,
+    }
+
+
+@app.post("/api/live/reset")
+def live_reset(req: LiveStartRequest):
+    """Resets live simulation back to t=0.0 ms."""
+    global _LIVE_SESSION
+    _LIVE_SESSION = LiveSimulationSession(
+        fleet_size=req.fleet_size,
+        seed=req.seed,
+        horizon_ms=req.horizon_ms,
+        enable_contention=req.enable_contention,
+        fault_time_ms=req.fault_time_ms,
+        contention_magnitude=req.contention_magnitude,
+        target_node=req.target_node,
+    )
+    return _LIVE_SESSION.get_snapshot()
+
+
+# -------------------------------------------------------------
 # Core Health and Legacy Endpoints
 # -------------------------------------------------------------
 @app.get("/api/health")
