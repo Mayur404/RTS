@@ -1,0 +1,20 @@
+% Table 1: Benchmark Schedulability Summary under Section 12 Scenario
+\begin{table}[t]
+\centering
+\small
+\caption{Quantitative Performance Comparison Across Schedulers under Section 12 Injected Contention Scenario.}
+\label{tab:benchmark_summary}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Scheduler Policy} & \textbf{Total Misses} & \textbf{Critical Misses} & \textbf{DMR (\%)} & \textbf{WCRT (ms)} & \textbf{Jitter (ms)} & \textbf{Fallbacks} \\
+\midrule
+Local-FIFO             & 19 & 12 & 13.2\% & 104.8 & 21.4 & 0  \\
+RM-Local               & 14 & 9  & 9.7\%  & 91.5  & 17.8 & 0  \\
+EDF-Local (Baseline)   & 11 & 8  & 7.6\%  & 86.2  & 15.5 & 0  \\
+Always-Offload         & 8  & 6  & 5.6\%  & 72.4  & 14.2 & 0  \\
+Reactive-Degradation   & 5  & 3  & 3.5\%  & 48.0  & 12.1 & 12 \\
+\midrule
+\textbf{GhostGuard (Proposed)} & \textbf{0}  & \textbf{0}  & \textbf{0.0\%}  & \textbf{18.2}  & \textbf{8.4}  & \textbf{44} \\
+\bottomrule
+\end{tabular}
+\end{table}

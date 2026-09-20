@@ -1,0 +1,8 @@
+Scheduler,Miss Ratio (%),Avg Response Time (ms),Worst-Case RT (ms),Jitter (ms),Violations Prevented,Offloads,Fallbacks
+Local-FIFO,16.7 ± 0.9,13.6,100.0,11.9,0.0,0.0,0.0
+EDF-Local,7.0 ± 1.5,13.1,100.0,17.2,65.6,0.0,0.0
+RM-Local,6.9 ± 1.1,12.6,100.0,17.2,66.7,0.0,0.0
+Reactive-Degradation,0.4 ± 0.3,6.4,71.0,8.2,110.4,0.0,350.0
+Always-Offload,39.1 ± 0.3,92.9,399.9,128.6,0.0,9298.2,0.0
+Predictive-NoFallback,15.1 ± 0.2,38.4,399.5,83.4,10.8,3097.9,0.0
+GhostGuard (Proposed),14.6 ± 2.0,16.0,100.0,17.4,14.8,113.3,374.6

@@ -1,0 +1,44 @@
+{
+  "Full-GhostGuard": {
+    "deadline_miss_ratio": 0.1556,
+    "critical_misses": 88.5,
+    "avg_response_time_ms": 16.52,
+    "total_offloads": 115.5,
+    "total_fallbacks": 370.5
+  },
+  "w/o GNN": {
+    "deadline_miss_ratio": 0.1556,
+    "critical_misses": 88.5,
+    "avg_response_time_ms": 16.52,
+    "total_offloads": 115.5,
+    "total_fallbacks": 370.5
+  },
+  "w/o Federated Learning": {
+    "deadline_miss_ratio": 0.1556,
+    "critical_misses": 88.5,
+    "avg_response_time_ms": 16.52,
+    "total_offloads": 115.5,
+    "total_fallbacks": 370.5
+  },
+  "w/o Offloading": {
+    "deadline_miss_ratio": 0.0177,
+    "critical_misses": 7.0,
+    "avg_response_time_ms": 9.59,
+    "total_offloads": 0.0,
+    "total_fallbacks": 382.5
+  },
+  "w/o Fallback": {
+    "deadline_miss_ratio": 0.1541,
+    "critical_misses": 87.5,
+    "avg_response_time_ms": 16.5,
+    "total_offloads": 115.5,
+    "total_fallbacks": 368.5
+  },
+  "w/o Neighbor Reliability": {
+    "deadline_miss_ratio": 0.1556,
+    "critical_misses": 88.5,
+    "avg_response_time_ms": 16.52,
+    "total_offloads": 115.5,
+    "total_fallbacks": 370.5
+  }
+}
