@@ -325,13 +325,15 @@
                         PROPOSED: GHOSTGUARD
                     </h3>
                 </div>
-                <span class="px-2.5 py-0.5 rounded text-[11px] font-bold mono bg-emerald-900/60 text-emerald-300 border border-emerald-700">
-                    DEMO TRACE
-                </span>
+                <div class="flex items-center gap-1.5">
+                    <span id="stat-gg-badge" class="px-2.5 py-0.5 rounded text-[11px] font-bold mono bg-emerald-900/60 text-emerald-300 border border-emerald-700">
+                        DEMONSTRATION
+                    </span>
+                </div>
             </div>
 
             <div id="stat-gg-misses" class="text-3xl md:text-4xl font-extrabold mono text-emerald-400 mt-2 mb-1">
-                0 Deadline Misses (0 Critical)
+                —
             </div>
             <div class="text-xs text-gray-300 mb-3 flex items-center gap-1.5">
                 <span class="text-emerald-400 font-bold">Observed in scripted trace:</span> no misses; not a safety guarantee
@@ -340,12 +342,12 @@
             <div class="grid grid-cols-2 gap-2 my-3">
                 <div class="bg-gray-900/80 border border-emerald-800/40 rounded p-2.5">
                     <div class="text-[11px] text-gray-400 mono uppercase">Worst-Case Response Time</div>
-                    <div id="stat-gg-wcrt" class="text-base font-extrabold text-emerald-300 mono mt-0.5">18.2 ms</div>
+                    <div id="stat-gg-wcrt" class="text-base font-extrabold text-emerald-300 mono mt-0.5">—</div>
                     <div class="text-[10px] text-emerald-400 mono">Safety Slack: +7.6 ms</div>
                 </div>
                 <div class="bg-gray-900/80 border border-emerald-800/40 rounded p-2.5">
                     <div class="text-[11px] text-gray-400 mono uppercase">Fallback Activations</div>
-                    <div id="stat-gg-fallbacks" class="text-base font-extrabold text-emerald-300 mono mt-0.5">44</div>
+                    <div id="stat-gg-fallbacks" class="text-base font-extrabold text-emerald-300 mono mt-0.5">—</div>
                     <div class="text-[10px] text-gray-400 mono">INT8 precision trade-off</div>
                 </div>
             </div>
@@ -376,13 +378,15 @@
                         BASELINE: EARLIEST DEADLINE FIRST (EDF)
                     </h3>
                 </div>
-                <span class="px-2.5 py-0.5 rounded text-[11px] font-bold mono bg-red-900/60 text-red-300 border border-red-700">
-                    SAFETY BREACH
-                </span>
+                <div class="flex items-center gap-1.5">
+                    <span id="stat-edf-badge" class="px-2.5 py-0.5 rounded text-[11px] font-bold mono bg-red-900/60 text-red-300 border border-red-700">
+                        DEMONSTRATION
+                    </span>
+                </div>
             </div>
 
             <div id="stat-edf-misses" class="text-3xl md:text-4xl font-extrabold mono text-red-400 mt-2 mb-1">
-                11 Deadline Misses (8 Critical)
+                —
             </div>
             <div class="text-xs text-gray-300 mb-3 flex items-center gap-1.5">
                 <span class="text-red-400 font-bold">Verdict:</span> Catastrophic Safety Failure under Overload
@@ -391,12 +395,12 @@
             <div class="grid grid-cols-2 gap-2 my-3">
                 <div class="bg-gray-900/80 border border-red-800/40 rounded p-2.5">
                     <div class="text-[11px] text-gray-400 mono uppercase">Worst-Case Response Time</div>
-                    <div id="stat-edf-wcrt" class="text-base font-extrabold text-red-300 mono mt-0.5">86.2 ms</div>
+                    <div id="stat-edf-wcrt" class="text-base font-extrabold text-red-300 mono mt-0.5">—</div>
                     <div class="text-[10px] text-red-400 mono">Lateness: -18.4 ms Breach</div>
                 </div>
                 <div class="bg-gray-900/80 border border-red-800/40 rounded p-2.5">
                     <div class="text-[11px] text-gray-400 mono uppercase">Fallback Activations</div>
-                    <div id="stat-edf-fallbacks" class="text-base font-extrabold text-red-300 mono mt-0.5">0</div>
+                    <div id="stat-edf-fallbacks" class="text-base font-extrabold text-red-300 mono mt-0.5">—</div>
                     <div class="text-[10px] text-gray-400 mono">Crashed under queue overflow</div>
                 </div>
             </div>

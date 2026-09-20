@@ -19,12 +19,14 @@ class DiscreteEventSimulator:
         config: Optional[GhostGuardConfig] = None,
         seed: int = 42,
         fleet_size: int = 6,
-        custom_devices: Optional[List[DeviceNode]] = None
+        custom_devices: Optional[List[DeviceNode]] = None,
+        run_id: str = "run-sim",
     ):
         self.config = config or GhostGuardConfig()
         self.seed = seed
         self.fleet_size = fleet_size
         self.rng = random.Random(seed)
+        self.run_id = run_id
 
         self.current_time_ms: float = 0.0
         self.events = EventQueue()
@@ -32,6 +34,9 @@ class DiscreteEventSimulator:
         self.telemetry_log: List[Dict[str, Any]] = []
         self.all_tasks: List[TaskInstance] = []
         self._monitoring_scheduled_until_ms: float = 0.0
+        self.pipeline_jobs: Dict[str, Any] = {}
+        self.canonical_events: List[Dict[str, Any]] = []
+        self._canonical_seq: int = 0
 
         # Active scheduler hook
         self.scheduler: Optional[Any] = None
@@ -41,6 +46,7 @@ class DiscreteEventSimulator:
                 self.devices[dev.device_id] = dev
         else:
             self._setup_default_fleet()
+
 
     def _setup_default_fleet(self):
         """Initializes a heterogeneous fleet of edge devices with mesh topology."""
@@ -138,6 +144,31 @@ class DiscreteEventSimulator:
             payload={}
         )
 
+    def emit_canonical_event(
+        self,
+        event_type: str,
+        device_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        attempt_id: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ):
+        from ghostguard.artifacts import EVENT_SCHEMA_VERSION
+        self._canonical_seq += 1
+        record = {
+            "schema_version": EVENT_SCHEMA_VERSION,
+            "run_id": getattr(self, "run_id", "run-sim"),
+            "sequence": self._canonical_seq,
+            "timestamp_us": int(round(self.current_time_ms * 1000.0)),
+            "event_type": event_type,
+            "device_id": device_id,
+            "job_id": job_id,
+            "task_id": task_id,
+            "attempt_id": attempt_id,
+            "payload": payload or {},
+        }
+        self.canonical_events.append(record)
+
     def log_event(self, event_name: str, device_id: str, details: Dict[str, Any]):
         self.telemetry_log.append({
             "timestamp_ms": round(self.current_time_ms, 3),
@@ -145,6 +176,91 @@ class DiscreteEventSimulator:
             "device_id": device_id,
             **details
         })
+        canonical_map = {
+            "TASK_RELEASED": "TASK_READY",
+            "TASK_COMPLETED": "TASK_COMMIT",
+            "DEADLINE_MISSED": "DEADLINE",
+            "CONTENTION_STARTED": "FAULT_START",
+            "CONTENTION_ENDED": "FAULT_END",
+            "OFFLOAD_ARRIVED": "REMOTE_EXECUTION_START",
+            "OFFLOAD_RETURNED": "RESULT_TX_END",
+            "LATE_RESULT_DISCARDED": "LATE_RESULT_DISCARDED",
+        }
+        if event_name in canonical_map:
+            self.emit_canonical_event(
+                canonical_map[event_name],
+                device_id=device_id,
+                task_id=details.get("task_id"),
+                payload=details,
+            )
+
+    def schedule_pipeline_job(
+        self,
+        pipeline_spec: Any,
+        release_time_ms: float,
+        device_id: str = "Device_1"
+    ) -> str:
+        """Schedules a DAG pipeline job with causal dependencies and per-stage deadlines."""
+        from ghostguard.domain.lifecycle import PipelineJob as DomainPipelineJob
+        job_counter = len(self.pipeline_jobs) + 1
+        job_id = f"job-{job_counter}"
+        release_us = int(round(release_time_ms * 1000.0))
+        domain_job = DomainPipelineJob.from_spec(job_id, pipeline_spec, release_us)
+        self.pipeline_jobs[job_id] = {
+            "domain_job": domain_job,
+            "device_id": device_id,
+            "tasks": {},
+            "spec": pipeline_spec,
+            "release_time_ms": release_time_ms,
+            "end_to_end_deadline_ms": release_time_ms + (pipeline_spec.end_to_end_deadline_us / 1000.0),
+            "completed": False,
+        }
+        self.emit_canonical_event(
+            "PIPELINE_RELEASE",
+            device_id=device_id,
+            job_id=job_id,
+            payload={"pipeline_id": pipeline_spec.pipeline_id}
+        )
+        # Release source tasks with indegree 0
+        for task_id, task_inst in domain_job.tasks.items():
+            if not task_inst.predecessor_ids:
+                sim_task = TaskInstance.from_task_spec(
+                    task_inst.spec,
+                    instance_id=task_inst.instance_id,
+                    device_id=device_id,
+                    release_time_ms=release_time_ms,
+                    pipeline_job_id=job_id,
+                    predecessor_ids=task_inst.predecessor_ids,
+                )
+                self.all_tasks.append(sim_task)
+                self.pipeline_jobs[job_id]["tasks"][task_id] = sim_task
+                self.events.push(
+                    timestamp_ms=sim_task.release_time_ms,
+                    event_type=EventType.TASK_RELEASE,
+                    device_id=device_id,
+                    task=sim_task,
+                )
+                self.events.push(
+                    timestamp_ms=sim_task.deadline_ms,
+                    event_type=EventType.DEADLINE_EXPIRED,
+                    device_id=device_id,
+                    task=sim_task,
+                )
+        return job_id
+
+    def schedule_periodic_pipeline(
+        self,
+        pipeline_spec: Any,
+        duration_ms: float,
+        device_id: str = "Device_1"
+    ):
+        """Schedules recurring DAG pipeline job releases across the simulation duration."""
+        period_ms = (pipeline_spec.period_us or 50_000) / 1000.0
+        t = 0.0
+        while t < duration_ms:
+            self.schedule_pipeline_job(pipeline_spec, t, device_id=device_id)
+            t += period_ms
+
 
     def run(self, duration_ms: Optional[float] = None) -> Dict[str, Any]:
         """Advance monotonically to an absolute simulation horizon.
@@ -223,8 +339,58 @@ class DiscreteEventSimulator:
                         "task_name": task.task_name,
                         "response_time_ms": task.response_time_ms,
                         "deadline_met": task.deadline_met,
-                        "is_degraded": task.is_degraded
+                        "is_degraded": task.is_degraded,
+                        "output_utility": getattr(task, "output_utility", 1.0),
                     })
+                    # Advance DAG pipeline dependencies if this task is part of a pipeline job
+                    if getattr(task, "pipeline_job_id", None) and task.pipeline_job_id in self.pipeline_jobs:
+                        job_info = self.pipeline_jobs[task.pipeline_job_id]
+                        domain_job = job_info["domain_job"]
+                        task_key = task.task_name
+                        attempt_id = getattr(task, "attempt_id", None) or f"att-{task.instance_id}"
+                        cur_us = int(round(self.current_time_ms * 1000.0))
+                        if task_key in domain_job.tasks:
+                            domain_task = domain_job.tasks[task_key]
+                            from ghostguard.domain.lifecycle import AttemptKind
+                            if attempt_id not in domain_task.attempts:
+                                domain_task.create_attempt(attempt_id, AttemptKind.LOCAL, dev.device_id, cur_us)
+                                domain_task.dispatch_attempt(attempt_id)
+                                domain_task.start_attempt(attempt_id, cur_us)
+                            domain_task.complete_attempt(attempt_id, cur_us)
+                            newly_ready = domain_job.commit_attempt(task_key, attempt_id, cur_us)
+                            for succ_id in newly_ready:
+                                succ_domain_task = domain_job.tasks[succ_id]
+                                succ_sim_task = TaskInstance.from_task_spec(
+                                    succ_domain_task.spec,
+                                    instance_id=succ_domain_task.instance_id,
+                                    device_id=job_info["device_id"],
+                                    release_time_ms=self.current_time_ms,
+                                    pipeline_job_id=task.pipeline_job_id,
+                                    predecessor_ids=succ_domain_task.predecessor_ids,
+                                )
+                                self.all_tasks.append(succ_sim_task)
+                                job_info["tasks"][succ_id] = succ_sim_task
+                                self.events.push(
+                                    timestamp_ms=self.current_time_ms,
+                                    event_type=EventType.TASK_RELEASE,
+                                    device_id=job_info["device_id"],
+                                    task=succ_sim_task,
+                                )
+                                self.events.push(
+                                    timestamp_ms=succ_sim_task.deadline_ms,
+                                    event_type=EventType.DEADLINE_EXPIRED,
+                                    device_id=job_info["device_id"],
+                                    task=succ_sim_task,
+                                )
+                            if task_key == job_info["spec"].sink_task_id:
+                                job_info["completed"] = True
+                                domain_job.completed_at_us = cur_us
+                                self.emit_canonical_event(
+                                    "PIPELINE_COMPLETE",
+                                    device_id=job_info["device_id"],
+                                    job_id=task.pipeline_job_id,
+                                    payload={"latency_ms": round(self.current_time_ms - job_info["release_time_ms"], 2)}
+                                )
 
     def _handle_event(self, event: SimulationEvent):
         """Processes individual discrete events."""
@@ -285,12 +451,22 @@ class DiscreteEventSimulator:
             origin_dev = self.devices.get(event.device_id)
             success = event.payload.get("success", True)
             if origin_dev and task:
+                offload_info = origin_dev.offloaded_tasks.get(task.instance_id)
+                if offload_info and offload_info.get("status") == "ABORTED":
+                    # Single-commit semantics: offload was aborted, late result is discarded
+                    self.log_event("LATE_RESULT_DISCARDED", origin_dev.device_id, {
+                        "task_id": task.instance_id,
+                        "reason": "Late remote result discarded after local fallback commit"
+                    })
+                    return
+
                 origin_dev.handle_offload_completion(task.instance_id, self.current_time_ms, success)
                 self.log_event("OFFLOAD_RETURNED", origin_dev.device_id, {
                     "task_id": task.instance_id,
                     "success": success,
                     "deadline_met": task.deadline_met
                 })
+
 
         elif event.event_type == EventType.NEIGHBOR_DEGRADE:
             target_id = event.payload.get("target_id")
@@ -332,6 +508,9 @@ class DiscreteEventSimulator:
         total_offloads = sum(dev.total_offloads for dev in self.devices.values())
         total_fallbacks = sum(dev.total_fallbacks for dev in self.devices.values())
 
+        utilities = [getattr(t, "output_utility", 1.0) for t in completed]
+        avg_utility = sum(utilities) / len(utilities) if utilities else 1.0
+
         return {
             "total_released_tasks": len(released),
             "eligible_task_count": len(eligible),
@@ -347,4 +526,6 @@ class DiscreteEventSimulator:
             "jitter_ms": round(jitter, 2),
             "total_offloads": total_offloads,
             "total_fallbacks": total_fallbacks,
+            "avg_utility": round(avg_utility, 3),
         }
+

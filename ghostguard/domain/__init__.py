@@ -30,6 +30,7 @@ from .specs import (
     ScenarioSpec,
     TaskSpec,
     WcetDistributionSpec,
+    create_autonomous_ai_pipeline_spec,
 )
 
 __all__ = [
@@ -63,4 +64,6 @@ __all__ = [
     "WcetDistributionSpec",
     "canonical_json",
     "canonical_sha256",
+    "create_autonomous_ai_pipeline_spec",
 ]
+

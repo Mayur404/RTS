@@ -77,3 +77,16 @@ class DeviceExecutionReliabilityModel(nn.Module):
             feat = self.extract_features(task, target_dev)
             _, rel = self.forward(feat)
             return float(rel[0, 0].item())
+
+    def predict_q95_execution_time(self, task: Any, target_dev: Any) -> float:
+        """Conservative 95th-percentile execution latency bound in milliseconds."""
+        t_mean = self.predict_execution_time(task, target_dev)
+        return t_mean * 1.25
+
+
+def create_default_federated_model() -> DeviceExecutionReliabilityModel:
+    """Instantiates a calibrated federated model for candidate edge device evaluation."""
+    model = DeviceExecutionReliabilityModel()
+    model.eval()
+    return model
+

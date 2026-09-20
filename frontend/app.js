@@ -126,7 +126,7 @@ async function loadSection12Benchmark() {
 
         seekToMs(0);
         renderGanttChart(data.tasks_gg, data.tasks_edf);
-        updatePerformanceCards(data.metrics_gg, data.metrics_edf);
+        updatePerformanceCards(data.metrics_gg, data.metrics_edf, data.evidence || "DEMONSTRATION");
     } catch (err) {
         console.error("Failed to load Section 12 benchmark:", err);
     } finally {
@@ -160,7 +160,7 @@ async function runDynamicSimulation() {
         
         seekToMs(0);
         renderGanttChart(data.tasks_gg, data.tasks_edf);
-        updatePerformanceCards(data.metrics_gg, data.metrics_edf);
+        updatePerformanceCards(data.metrics_gg, data.metrics_edf, data.evidence || "SIMULATED");
     } catch (err) {
         console.error("Simulation failed:", err);
         alert(`Simulation Error: ${err.message}`);
@@ -651,28 +651,62 @@ function showTooltip(clientX, clientY, node) {
 // -------------------------------------------------------------
 // Panel 3: Performance Cards Update
 // -------------------------------------------------------------
-function updatePerformanceCards(metricsGg, metricsEdf) {
+function updatePerformanceCards(metricsGg, metricsEdf, defaultEvidence = "SIMULATED") {
     if (!metricsGg || !metricsEdf) return;
 
-    const ggWcrt = (metricsGg.wcrt_ms !== undefined ? metricsGg.wcrt_ms : metricsGg.worst_case_response_time_ms) ?? 18.2;
-    const edfWcrt = (metricsEdf.wcrt_ms !== undefined ? metricsEdf.wcrt_ms : metricsEdf.worst_case_response_time_ms) ?? 86.2;
-    const ggMisses = metricsGg.deadline_missed_count ?? 0;
-    const ggCritMisses = metricsGg.critical_misses ?? 0;
-    const ggFallbacks = metricsGg.total_fallbacks ?? 44;
+    const ggWcrt = (metricsGg.wcrt_ms !== undefined ? metricsGg.wcrt_ms : metricsGg.worst_case_response_time_ms);
+    const edfWcrt = (metricsEdf.wcrt_ms !== undefined ? metricsEdf.wcrt_ms : metricsEdf.worst_case_response_time_ms);
+    const ggMisses = metricsGg.deadline_missed_count;
+    const ggCritMisses = metricsGg.critical_misses;
+    const ggFallbacks = metricsGg.total_fallbacks;
 
-    const edfMisses = metricsEdf.deadline_missed_count ?? 11;
-    const edfCritMisses = metricsEdf.critical_misses ?? 8;
-    const edfFallbacks = metricsEdf.total_fallbacks ?? 0;
+    const edfMisses = metricsEdf.deadline_missed_count;
+    const edfCritMisses = metricsEdf.critical_misses;
+    const edfFallbacks = metricsEdf.total_fallbacks;
+
+    // Update evidence badge pills if elements exist
+    const ggBadge = document.getElementById("stat-gg-badge");
+    if (ggBadge) {
+        ggBadge.textContent = metricsGg.evidence || defaultEvidence;
+    }
+    const edfBadge = document.getElementById("stat-edf-badge");
+    if (edfBadge) {
+        edfBadge.textContent = metricsEdf.evidence || defaultEvidence;
+    }
 
     // GhostGuard Card
-    if (statGgMisses) statGgMisses.textContent = `${ggMisses} Deadline Misses (${ggCritMisses} Critical)`;
-    if (statGgWcrt) statGgWcrt.textContent = `${Number(ggWcrt).toFixed(1)} ms`;
-    if (statGgFallbacks) statGgFallbacks.textContent = `${ggFallbacks}`;
+    if (statGgMisses) {
+        statGgMisses.textContent = (ggMisses !== undefined && ggCritMisses !== undefined)
+            ? `${ggMisses} Deadline Misses (${ggCritMisses} Critical)`
+            : "—";
+    }
+    if (statGgWcrt) {
+        statGgWcrt.textContent = (ggWcrt !== undefined && ggWcrt !== null)
+            ? `${Number(ggWcrt).toFixed(1)} ms`
+            : "Not computed";
+    }
+    if (statGgFallbacks) {
+        statGgFallbacks.textContent = (ggFallbacks !== undefined && ggFallbacks !== null)
+            ? `${ggFallbacks}`
+            : "0";
+    }
 
     // EDF Card
-    if (statEdfMisses) statEdfMisses.textContent = `${edfMisses} Deadline Misses (${edfCritMisses} Critical)`;
-    if (statEdfWcrt) statEdfWcrt.textContent = `${Number(edfWcrt).toFixed(1)} ms`;
-    if (statEdfFallbacks) statEdfFallbacks.textContent = `${edfFallbacks}`;
+    if (statEdfMisses) {
+        statEdfMisses.textContent = (edfMisses !== undefined && edfCritMisses !== undefined)
+            ? `${edfMisses} Deadline Misses (${edfCritMisses} Critical)`
+            : "—";
+    }
+    if (statEdfWcrt) {
+        statEdfWcrt.textContent = (edfWcrt !== undefined && edfWcrt !== null)
+            ? `${Number(edfWcrt).toFixed(1)} ms`
+            : "Not computed";
+    }
+    if (statEdfFallbacks) {
+        statEdfFallbacks.textContent = (edfFallbacks !== undefined && edfFallbacks !== null)
+            ? `${edfFallbacks}`
+            : "0";
+    }
 }
 
 // -------------------------------------------------------------

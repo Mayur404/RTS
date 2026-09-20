@@ -307,6 +307,39 @@ For critical **Perception** (Nominal $C = 15.0\\text{{ ms}}$, Degraded $C^{{\\te
         f.write(extracts_md)
     print(f"[Paper Artifacts] Wrote {extracts_path}")
 
+    # Generate provenance sidecar
+    try:
+        from ghostguard.artifacts.canonical import canonical_json_bytes, sha256_file
+        file_records = {}
+        for fname in sorted(os.listdir(output_dir)):
+            if fname == "provenance.json":
+                continue
+            fpath = os.path.join(output_dir, fname)
+            if os.path.isfile(fpath):
+                file_records[fname] = {
+                    "size_bytes": os.path.getsize(fpath),
+                    "sha256": sha256_file(fpath),
+                }
+
+        provenance_data = {
+            "schema_version": "1.0.0",
+            "evidence_type": "DEMONSTRATION",
+            "bundle_type": "legacy_demonstration_artifacts",
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "code_revision": "research-v1",
+            "files": file_records,
+            "disclaimer": (
+                "Legacy demonstration artifacts. These values illustrate the proposed pipeline "
+                "and are not yet backed by empirical run provenance."
+            )
+        }
+        provenance_path = os.path.join(output_dir, "provenance.json")
+        with open(provenance_path, "wb") as f:
+            f.write(canonical_json_bytes(provenance_data) + b"\n")
+        print(f"[Paper Artifacts] Wrote {provenance_path}")
+    except Exception as e:
+        print(f"[Paper Artifacts] Warning: could not write provenance.json: {e}")
+
 
 if __name__ == "__main__":
     generate_paper_artifacts()

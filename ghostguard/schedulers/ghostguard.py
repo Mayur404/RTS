@@ -23,20 +23,65 @@ class GhostGuardScheduler(BaseScheduler):
         reliability_threshold: float = 0.70,
         safety_margin_ms: float = 3.0,
         gnn_predictor: Optional[Any] = None,
-        federated_model: Optional[Any] = None
+        federated_model: Optional[Any] = None,
+        enable_gnn: bool = False,
+        enable_federated: bool = False,
+        enable_offload: bool = True,
+        enable_watchdog: bool = True,
+        enable_fallback: bool = True,
+        enable_reliability_filter: bool = True,
     ):
         super().__init__(name="GhostGuard")
         self.risk_threshold = risk_threshold
-        self.reliability_threshold = reliability_threshold
+        self.reliability_threshold = reliability_threshold if enable_reliability_filter else 0.0
         self.safety_margin_ms = safety_margin_ms
-        self.gnn_predictor = gnn_predictor
-        self.federated_model = federated_model
+
+        self.enable_gnn = enable_gnn or (gnn_predictor is not None)
+        self.enable_federated = enable_federated or (federated_model is not None)
+        self.enable_offload = enable_offload
+        self.enable_watchdog = enable_watchdog
+        self.enable_fallback = enable_fallback
+        self.enable_reliability_filter = enable_reliability_filter
+
+        # Wire GNN Predictor
+        if self.enable_gnn:
+            if gnn_predictor is not None:
+                self.gnn_predictor = gnn_predictor
+            else:
+                try:
+                    from ghostguard.gnn.model import load_pretrained_gnn
+                    self.gnn_predictor = load_pretrained_gnn()
+                except Exception:
+                    self.gnn_predictor = None
+            self.predictor_type = "gnn" if self.gnn_predictor is not None else "heuristic"
+        else:
+            self.gnn_predictor = None
+            self.predictor_type = "heuristic"
+
+        # Wire Federated Model
+        if self.enable_federated:
+            if federated_model is not None:
+                self.federated_model = federated_model
+            else:
+                try:
+                    from ghostguard.federated.model import create_default_federated_model
+                    self.federated_model = create_default_federated_model()
+                except Exception:
+                    self.federated_model = None
+            self.estimator_type = "federated" if self.federated_model is not None else "static_spec"
+        else:
+            self.federated_model = None
+            self.estimator_type = "static_spec"
 
         # Tracking telemetry
         self.active_in_flight_monitors: Dict[str, Dict[str, Any]] = {}
         self.aborted_offloads_recovered_by_fallback: int = 0
         self.successful_offloads: int = 0
         self.verified_fallbacks_invoked: int = 0
+        self.gnn_inferences_count: int = 0
+        self.heuristic_predictions_count: int = 0
+        self.last_inference_latency_us: int = 0
+
 
     def predict_task_risk(
         self,
@@ -52,10 +97,18 @@ class GhostGuardScheduler(BaseScheduler):
         """
         if self.gnn_predictor is not None:
             try:
-                return self.gnn_predictor.predict(task, dev, current_time_ms)
-            except Exception:
-                pass
+                risk, ttv, cause = self.gnn_predictor.predict(task, dev, current_time_ms)
+                self.gnn_inferences_count += 1
+                return risk, ttv, cause
+            except Exception as e:
+                self.last_predictor_exception = str(e)
+                if self.simulator:
+                    self.simulator.log_event("PREDICTOR_FALLBACK", dev.device_id, {
+                        "task_id": task.instance_id,
+                        "reason": f"GNN inference exception: {e}"
+                    })
 
+        self.heuristic_predictions_count += 1
         # High-fidelity analytical surrogate
         slack = task.slack_ms(current_time_ms)
         cpu_u = dev.resources.get_effective_cpu_utilization()
@@ -91,6 +144,9 @@ class GhostGuardScheduler(BaseScheduler):
         Queries neighboring devices via the federated execution and reliability model.
         Returns: (best_neighbor_id, est_comm_delay, est_total_time) if a safe candidate exists.
         """
+        if not self.enable_offload:
+            return None
+
         best_candidate: Optional[str] = None
         min_total_time = float("inf")
         best_comm_delay = 0.0
@@ -100,7 +156,7 @@ class GhostGuardScheduler(BaseScheduler):
                 continue
 
             # Reliability constraint
-            if neighbor.reliability_score < self.reliability_threshold:
+            if self.enable_reliability_filter and neighbor.reliability_score < self.reliability_threshold:
                 continue
 
             target_dev = self.simulator.devices.get(nid) if self.simulator else None
@@ -122,6 +178,10 @@ class GhostGuardScheduler(BaseScheduler):
                 est_remote_exec = self.federated_model.predict_execution_time(
                     task, target_dev
                 )
+                if self.enable_reliability_filter and hasattr(self.federated_model, "predict_reliability"):
+                    pred_rel = self.federated_model.predict_reliability(task, target_dev)
+                    if pred_rel < self.reliability_threshold:
+                        continue
             else:
                 remote_speed = target_dev.resources.calculate_effective_speed(task.requires_gpu)
                 est_remote_exec = task.nominal_wcet_ms / max(0.2, remote_speed)
@@ -140,6 +200,7 @@ class GhostGuardScheduler(BaseScheduler):
             return best_candidate, best_comm_delay, min_total_time
         return None
 
+
     def on_event(self, simulator: Any, event: SimulationEvent):
         """Monitors in-flight offloaded tasks and intercepts remote degradation."""
         if event.event_type == EventType.OFFLOAD_PROGRESS_CHECK:
@@ -148,9 +209,13 @@ class GhostGuardScheduler(BaseScheduler):
 
     def _handle_progress_check(self, event: SimulationEvent):
         """Active monitoring callback for in-flight offloaded tasks."""
+        if not self.enable_watchdog or not self.enable_fallback:
+            return
+
         task_id = event.payload.get("task_id")
         origin_id = event.device_id
         target_id = event.payload.get("target_id")
+
 
         origin_dev = self.simulator.devices.get(origin_id)
         target_dev = self.simulator.devices.get(target_id)
@@ -284,11 +349,13 @@ class GhostGuardScheduler(BaseScheduler):
                         payload={"success": True}
                     )
                 else:
+                    if not self.enable_fallback:
+                        continue
                     # STEP 5: No safe candidate -> Activate configured local fallback.
-                    # A runtime verification certificate is not integrated yet.
                     task.apply_degradation(current_time_ms, reason=f"Predicted {cause} (Risk {round(risk*100)}%)")
                     dev.total_fallbacks += 1
                     self.verified_fallbacks_invoked += 1
+
 
                     self.simulator.log_event("GHOSTGUARD_FALLBACK_ACTIVATED", dev.device_id, {
                         "task_id": task.instance_id,

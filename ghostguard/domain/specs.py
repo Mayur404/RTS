@@ -440,3 +440,152 @@ class ExperimentSpec(CanonicalHashMixin):
             raise ValueError("repetitions must be a positive integer")
         for metric in self.metrics:
             _identifier(metric, "metric")
+
+
+def create_autonomous_ai_pipeline_spec(
+    pipeline_id: str = "autonomous_pipeline",
+    period_us: int = 50_000,
+    end_to_end_deadline_us: int = 50_000,
+) -> PipelineSpec:
+    """Creates the reference 6-stage autonomous robot/UAV AI pipeline DAG specification."""
+    sense = TaskSpec(
+        task_id="Sense",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.15),),
+        relative_deadline_us=20_000,
+        wcet_distribution=WcetDistributionSpec("constant", 1_500, 3_000, 3_000),
+        criticality=Criticality.HIGH,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=10,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Sense_Degraded",
+                elapsed_work_interval_us=(0, 3_000),
+                checkpoint_overhead_us=100,
+                remaining_wcet_us=1_500,
+                output_utility=0.85,
+            ),
+        ),
+    )
+    obstacle = TaskSpec(
+        task_id="ObstacleDetection",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.25), ResourceDemand(ResourceKind.GPU, 0.45)),
+        relative_deadline_us=20_000,
+        wcet_distribution=WcetDistributionSpec("constant", 2_500, 8_000, 8_000),
+        criticality=Criticality.HIGH,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=9,
+        offloadable=True,
+        request_payload_bytes=8_192,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Obstacle_Degraded",
+                elapsed_work_interval_us=(0, 8_000),
+                checkpoint_overhead_us=150,
+                remaining_wcet_us=2_500,
+                output_utility=0.82,
+            ),
+        ),
+    )
+    perception = TaskSpec(
+        task_id="Perception",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.30), ResourceDemand(ResourceKind.GPU, 0.60)),
+        relative_deadline_us=33_000,
+        wcet_distribution=WcetDistributionSpec("constant", 5_000, 15_000, 15_000),
+        criticality=Criticality.HIGH,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=8,
+        offloadable=True,
+        request_payload_bytes=16_384,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Perception_Degraded",
+                elapsed_work_interval_us=(0, 15_000),
+                checkpoint_overhead_us=200,
+                remaining_wcet_us=5_000,
+                output_utility=0.79,
+            ),
+        ),
+    )
+    tracking = TaskSpec(
+        task_id="Tracking",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.25),),
+        relative_deadline_us=50_000,
+        wcet_distribution=WcetDistributionSpec("constant", 4_000, 12_000, 12_000),
+        criticality=Criticality.LOW,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=6,
+        offloadable=True,
+        request_payload_bytes=4_096,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Tracking_Degraded",
+                elapsed_work_interval_us=(0, 12_000),
+                checkpoint_overhead_us=100,
+                remaining_wcet_us=4_000,
+                output_utility=0.70,
+            ),
+        ),
+    )
+    planning = TaskSpec(
+        task_id="PathPlanning",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.35), ResourceDemand(ResourceKind.GPU, 0.30)),
+        relative_deadline_us=50_000,
+        wcet_distribution=WcetDistributionSpec("constant", 4_500, 14_000, 14_000),
+        criticality=Criticality.HIGH,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=7,
+        offloadable=True,
+        request_payload_bytes=8_192,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Planning_Degraded",
+                elapsed_work_interval_us=(0, 14_000),
+                checkpoint_overhead_us=150,
+                remaining_wcet_us=4_500,
+                output_utility=0.80,
+            ),
+        ),
+    )
+    actuation = TaskSpec(
+        task_id="Actuation",
+        resource_demands=(ResourceDemand(ResourceKind.CPU, 0.10),),
+        relative_deadline_us=10_000,
+        wcet_distribution=WcetDistributionSpec("constant", 1_000, 2_000, 2_000),
+        criticality=Criticality.HIGH,
+        preemption_mode=PreemptionMode.PREEMPTIVE,
+        period_us=period_us,
+        priority=11,
+        exit_points=(
+            ExitPointSpec(
+                checkpoint_id="Actuation_Degraded",
+                elapsed_work_interval_us=(0, 2_000),
+                checkpoint_overhead_us=50,
+                remaining_wcet_us=1_000,
+                output_utility=0.90,
+            ),
+        ),
+    )
+
+    edges = (
+        ("Sense", "ObstacleDetection"),
+        ("ObstacleDetection", "Perception"),
+        ("Perception", "Tracking"),
+        ("Tracking", "PathPlanning"),
+        ("PathPlanning", "Actuation"),
+    )
+
+    return PipelineSpec(
+        pipeline_id=pipeline_id,
+        tasks=(sense, obstacle, perception, tracking, planning, actuation),
+        dependency_edges=edges,
+        release_model=ReleaseModel.PERIODIC,
+        period_us=period_us,
+        end_to_end_deadline_us=end_to_end_deadline_us,
+        sink_task_id="Actuation",
+    )
+

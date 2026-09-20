@@ -537,10 +537,12 @@ def run_traced_simulation(duration_ms: float = 100.0, step_ms: float = 1.0) -> D
 
         frames.append({
             "t": t,
+            "evidence": "DEMONSTRATION",
             "stage_id": stage_id,
             "stage_name": stage_name,
             "stage_desc": stage_desc,
             "badge_color": badge_color,
+
             "channel_state": channel_state,
             "watchdog_status": watchdog_status,
             "active_offload": active_offload,
@@ -588,6 +590,7 @@ def run_traced_simulation(duration_ms: float = 100.0, step_ms: float = 1.0) -> D
     metrics_edf["wcrt_ms"] = metrics_edf.get("worst_case_response_time_ms", 86.2)
 
     return {
+        "evidence": "DEMONSTRATION",
         "frames": frames,
         "max_t": float(duration_ms),
         "step_ms": step_ms,
@@ -599,6 +602,7 @@ def run_traced_simulation(duration_ms: float = 100.0, step_ms: float = 1.0) -> D
         "tasks_gg": extract_task_intervals(sim_gg.all_tasks, duration_ms),
         "tasks_edf": extract_task_intervals(sim_edf.all_tasks, duration_ms),
     }
+
 
 
 def run_dynamic_scenario(
@@ -815,10 +819,13 @@ def run_dynamic_scenario(
         channel_jitter_ms=channel_jitter_ms, target_node=target_node
     )
 
-    metrics_gg["wcrt_ms"] = metrics_gg.get("worst_case_response_time_ms", 18.2)
-    metrics_edf["wcrt_ms"] = metrics_edf.get("worst_case_response_time_ms", 86.2)
+    metrics_gg["wcrt_ms"] = metrics_gg.get("worst_case_response_time_ms")
+    metrics_edf["wcrt_ms"] = metrics_edf.get("worst_case_response_time_ms")
+    metrics_gg["evidence"] = "SIMULATED"
+    metrics_edf["evidence"] = "SIMULATED"
 
     return {
+        "evidence": "SIMULATED",
         "frames": frames,
         "max_t": float(duration_ms),
         "step_ms": step_ms,
