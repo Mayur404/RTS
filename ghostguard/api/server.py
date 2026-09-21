@@ -20,7 +20,8 @@ root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from ghostguard.config import GhostGuardConfig, DEFAULT_TASK_PROFILES
+from ghostguard.config import GhostGuardConfig, DEFAULT_TASK_PROFILES, HARDWARE_PROFILES, NODE_FLEET_DEFINITIONS
+from ghostguard.simulator.device import DeviceNode
 from ghostguard.dashboard.timeline_tracer import run_traced_simulation, run_dynamic_scenario
 from ghostguard.dashboard.frame_reducer import reduce_events_to_frames
 from ghostguard.simulator.engine import DiscreteEventSimulator
@@ -219,8 +220,35 @@ class LiveSimulationSession:
         config_gg = GhostGuardConfig(simulation_duration_ms=horizon_ms)
         config_edf = GhostGuardConfig(simulation_duration_ms=horizon_ms)
 
-        self.sim_gg = DiscreteEventSimulator(config=config_gg, seed=seed, fleet_size=fleet_size)
-        self.sim_edf = DiscreteEventSimulator(config=config_edf, seed=seed, fleet_size=fleet_size)
+        custom_devs_gg = []
+        custom_devs_edf = []
+        for i in range(fleet_size):
+            defn = NODE_FLEET_DEFINITIONS[i] if i < len(NODE_FLEET_DEFINITIONS) else {
+                "id": f"Device_{i+1}",
+                "role": f"Auxiliary Edge Worker {i+1}",
+                "hardware_profile": "Jetson-Orin-Nano",
+                "x": (i % 3) * 20.0,
+                "y": (i // 3) * 20.0,
+            }
+            hw_name = defn.get("hardware_profile", "Jetson-Orin-Nano")
+            hw = HARDWARE_PROFILES.get(hw_name, HARDWARE_PROFILES["Jetson-Orin-Nano"])
+            pos = (defn.get("x", (i % 3) * 20.0), defn.get("y", (i // 3) * 20.0))
+            custom_devs_gg.append(DeviceNode(device_id=defn["id"], hardware=hw, position=pos, role=defn["role"]))
+            custom_devs_edf.append(DeviceNode(device_id=defn["id"], hardware=hw, position=pos, role=defn["role"]))
+
+        self.sim_gg = DiscreteEventSimulator(config=config_gg, custom_devices=custom_devs_gg, seed=seed, fleet_size=fleet_size)
+        self.sim_edf = DiscreteEventSimulator(config=config_edf, custom_devices=custom_devs_edf, seed=seed, fleet_size=fleet_size)
+
+        # Form mesh connections across fleet
+        for sim in (self.sim_gg, self.sim_edf):
+            for dev_id, dev in sim.devices.items():
+                for other_id, other_dev in sim.devices.items():
+                    if dev_id != other_id and other_id not in dev.neighbors:
+                        dx = dev.position[0] - other_dev.position[0]
+                        dy = dev.position[1] - other_dev.position[1]
+                        dist = (dx**2 + dy**2)**0.5
+                        if dist <= 45.0 or fleet_size <= 4:
+                            dev.add_neighbor(other_id, distance_m=dist, reliability=0.96)
 
         self.sim_gg.schedule_periodic_tasks(duration_ms=horizon_ms)
         self.sim_edf.schedule_periodic_tasks(duration_ms=horizon_ms)
@@ -273,11 +301,13 @@ class LiveSimulationSession:
         self._last_event_idx_gg = 0
 
     def step(self, delta_ms: float = 10.0) -> Dict[str, Any]:
-        next_t = min(self.horizon_ms, self.current_time_ms + delta_ms)
-        if next_t > self.current_time_ms:
+        cur_t = max(self.sim_gg.current_time_ms, self.sim_edf.current_time_ms, self.current_time_ms)
+        next_t = min(self.horizon_ms, cur_t + delta_ms)
+        if next_t > self.sim_gg.current_time_ms:
             self.sim_gg.run(duration_ms=next_t)
+        if next_t > self.sim_edf.current_time_ms:
             self.sim_edf.run(duration_ms=next_t)
-            self.current_time_ms = next_t
+        self.current_time_ms = max(self.sim_gg.current_time_ms, self.sim_edf.current_time_ms)
         return self.get_snapshot()
 
     def inject_fault(self, target_dev_id: str, cpu: float, gpu: float, duration_ms: float, delay_ms: float):

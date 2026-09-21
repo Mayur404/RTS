@@ -487,8 +487,11 @@ class DiscreteEventSimulator:
             or (t.finish_time_ms is None and self.current_time_ms >= t.deadline_ms)
         ]
         met = [t for t in completed if t.deadline_met is True]
-        eligible = [t for t in released if t in completed or t in missed]
-        censored = [t for t in released if t not in eligible]
+        completed_ids = {t.instance_id for t in completed}
+        missed_ids = {t.instance_id for t in missed}
+        eligible_ids = completed_ids | missed_ids
+        eligible = [t for t in released if t.instance_id in eligible_ids]
+        censored = [t for t in released if t.instance_id not in eligible_ids]
 
         response_times = [t.response_time_ms for t in completed if t.response_time_ms is not None]
         lateness_vals = [t.lateness_ms for t in completed if t.lateness_ms is not None]

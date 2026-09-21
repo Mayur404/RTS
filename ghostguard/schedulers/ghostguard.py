@@ -169,6 +169,10 @@ class GhostGuardScheduler(BaseScheduler):
             if (task.requires_gpu and target_gpu_u > 0.80) or target_cpu_u > 0.85:
                 continue
 
+            # Queue length throttling: do not overwhelm candidates that already have loaded queues
+            if len(target_dev.ready_queue) >= 2 or len(target_dev.remotely_hosted_tasks) >= 2:
+                continue
+
             # Estimate communication round-trip delay
             comm_delay = dev.resources.estimate_network_delay_ms(
                 task.payload_kb, target_dev.hardware
@@ -186,8 +190,15 @@ class GhostGuardScheduler(BaseScheduler):
                 remote_speed = target_dev.resources.calculate_effective_speed(task.requires_gpu)
                 est_remote_exec = task.nominal_wcet_ms / max(0.2, remote_speed)
 
-            # Round trip = send + exec + receive
-            est_total = (comm_delay * 2.0) + est_remote_exec
+            # Response Time Analysis: account for candidate's existing queue backlog
+            target_queue_work = sum(
+                t.remaining_work_ms / max(0.2, target_dev.resources.calculate_effective_speed(t.requires_gpu))
+                for t in target_dev.ready_queue
+                if (t.is_critical or t.priority >= task.priority)
+            )
+
+            # Round trip = send + remote queue wait + exec + receive
+            est_total = (comm_delay * 2.0) + target_queue_work + est_remote_exec
 
             # Real-Time Safety Check
             if current_time_ms + est_total + self.safety_margin_ms <= task.deadline_ms:
@@ -285,6 +296,12 @@ class GhostGuardScheduler(BaseScheduler):
         if not dev.ready_queue or not self.simulator:
             return
 
+        is_node_stressed = (
+            dev.resources.get_effective_cpu_utilization() > 0.80
+            or dev.resources.get_effective_gpu_utilization() > 0.80
+            or len(dev.ready_queue) > 3
+        )
+
         for task in list(dev.ready_queue):
             # Only origin device manages GhostGuard arbitration for its tasks
             if task.origin_device_id != dev.device_id:
@@ -293,10 +310,17 @@ class GhostGuardScheduler(BaseScheduler):
             if task.is_degraded:
                 continue
 
+            # Mixed-criticality degradation: if node is stressed, degrade non-critical tasks to preserve safety
+            if is_node_stressed and not task.is_critical:
+                task.apply_degradation(current_time_ms, reason="Mixed-Criticality Mode Change Under Stress")
+                dev.total_fallbacks += 1
+                self.verified_fallbacks_invoked += 1
+                continue
+
             # STEP 1: Evaluate predictive risk
             risk, ttv, cause = self.predict_task_risk(task, dev, current_time_ms)
 
-            if risk >= self.risk_threshold and task.is_critical:
+            if (risk >= self.risk_threshold or is_node_stressed) and task.is_critical:
                 dev.total_interventions += 1
 
                 # STEP 2 & 3: Evaluate candidate neighbors
@@ -369,5 +393,10 @@ class GhostGuardScheduler(BaseScheduler):
         super().schedule_device(dev, current_time_ms)
 
     def order_ready_queue(self, dev: DeviceNode, current_time_ms: float) -> List[TaskInstance]:
-        # Critical tasks first, then earliest deadline
-        return sorted(dev.ready_queue, key=lambda t: (not t.is_critical, t.deadline_ms, -t.priority))
+        # Local critical tasks first, followed by local non-critical, then remotely hosted guest tasks
+        return sorted(dev.ready_queue, key=lambda t: (
+            t.origin_device_id != dev.device_id,
+            not t.is_critical,
+            t.deadline_ms,
+            -t.priority
+        ))

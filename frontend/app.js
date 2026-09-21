@@ -16,11 +16,12 @@ let isLiveRunning = false;
 let simulationSpeed = 1.0;
 let fleetSize = 4;
 let currentTimeMs = 0.0;
-let stepIntervalMs = 15.0; // simulation advance per tick
+let stepIntervalMs = 25.0; // simulation advance per tick
 let animTick = 0;
 let animationFrameId = null;
 let lastRealTime = performance.now();
 let lastStepRealTime = performance.now();
+let isFetchingStep = false;
 
 // Rolling chart history
 const chartHistory = {
@@ -136,7 +137,9 @@ async function startLiveSession() {
     }
 }
 
-async function stepSimulation(deltaMs = 10.0) {
+async function stepSimulation(deltaMs = 25.0) {
+    if (isFetchingStep) return;
+    isFetchingStep = true;
     try {
         const res = await fetch("/api/live/step", {
             method: "POST",
@@ -148,10 +151,11 @@ async function stepSimulation(deltaMs = 10.0) {
         latestSnapshot = data;
         currentTimeMs = data.current_time_ms;
         updateUI(data);
-        renderTopology(data);
         recordChartHistory(data);
     } catch (err) {
         console.error("Step failed:", err);
+    } finally {
+        isFetchingStep = false;
     }
 }
 
@@ -222,11 +226,12 @@ function animationLoop(timestamp) {
 
     if (isLiveRunning) {
         const realDelta = timestamp - lastStepRealTime;
-        // Step interval adjusted by simulation speed
-        const interval = (stepIntervalMs / simulationSpeed);
-        if (realDelta >= interval) {
+        // Paced cadenced network step every ~75ms to eliminate network queue lag
+        const networkCadenceMs = 75;
+        if (realDelta >= networkCadenceMs && !isFetchingStep) {
             lastStepRealTime = timestamp;
-            stepSimulation(stepIntervalMs);
+            const simDelta = 25.0 * simulationSpeed;
+            stepSimulation(simDelta);
         }
     }
 

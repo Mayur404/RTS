@@ -99,6 +99,9 @@ class DeviceNode:
             self.resources.active_gpu_load = max(0.0, self.resources.active_gpu_load - task.gpu_util_fraction)
             self.resources.active_memory_mb = max(0.0, self.resources.active_memory_mb - task.memory_mb)
 
+        if task in self.remotely_hosted_tasks:
+            self.remotely_hosted_tasks.remove(task)
+
         task.finish_time_ms = current_time_ms
         task.remaining_work_ms = 0.0
 
@@ -120,6 +123,9 @@ class DeviceNode:
             self.resources.active_cpu_load = max(0.0, self.resources.active_cpu_load - task.cpu_util_fraction)
             self.resources.active_gpu_load = max(0.0, self.resources.active_gpu_load - task.gpu_util_fraction)
             self.resources.active_memory_mb = max(0.0, self.resources.active_memory_mb - task.memory_mb)
+
+        if task in self.remotely_hosted_tasks:
+            self.remotely_hosted_tasks.remove(task)
 
         task.finish_time_ms = current_time_ms
         task.state = TaskState.DEADLINE_MISSED
