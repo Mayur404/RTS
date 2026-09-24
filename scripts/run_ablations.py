@@ -1,5 +1,5 @@
 """
-Script to execute the GhostGuard ablation study suite.
+Script to execute the PredictiveRuntime ablation study suite.
 """
 
 import sys
@@ -7,12 +7,12 @@ import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ghostguard.experiments.ablations import AblationRunner
+from rts_predictive.experiments.ablations import AblationRunner
 
 
 def main():
     print("==================================================")
-    print("          GHOSTGUARD ABLATION STUDY SUITE         ")
+    print("          PREDICTIVE_RUNTIME ABLATION STUDY SUITE         ")
     print("==================================================")
     runner = AblationRunner(output_dir="results")
     summary = runner.run_ablations(seeds=[42, 101, 202], duration_ms=450.0)

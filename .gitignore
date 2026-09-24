@@ -1,10 +1,40 @@
+# Virtual Environments
 .venv/
+venv/
+env/
+
+# Python Bytecode & Cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Pytest & Coverage
 .pytest_cache/
-*.pt
 .pytest-tmp-*/
+.coverage
+htmlcov/
+
+# PyTorch Checkpoints (whitelist models/ pretrained weights)
+*.pt
+!models/*.pt
+
+# Streamlit
 .streamlit/credentials.toml
-results/runs/
+
+# Logs & Diagnostics
 *.log
+
+# Git Worktrees
 .worktrees/
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Experiment Traces (keep frozen publication plots & tables, ignore heavy raw traces)
+research_runs/**/raw_runs/
+research_runs/ablation_*
+research_runs/benchmarks/
+research_runs/experiment_suite/

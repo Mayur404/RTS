@@ -1,344 +1,131 @@
-"""
-Automated Paper Artifacts Generator for GhostGuard Research.
-Runs benchmark simulations, evaluates formal RTA bounds, and exports
-verified publication tables (LaTeX booktabs), machine-readable JSON,
-and academic paper extracts to results/paper/.
-"""
+"""Build simulation tables and figures from validated canonical event streams."""
 
-import os
-import sys
+from __future__ import annotations
+
 import json
-from datetime import datetime, timezone
+from pathlib import Path
+from rts_predictive.artifacts.code_provenance import code_provenance
 
-# Ensure project root is on sys.path
-root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
-
-from ghostguard.config import DEFAULT_TASK_PROFILES
-from ghostguard.verification.timing_analyzer import TimingAnalyzer
-from ghostguard.experiments.plotting import generate_all_plots
+from rts_predictive.artifacts import CanonicalEventWriter, iter_canonical_events
+from rts_predictive.experiments.scenarios import create_bursty_scenario
+from rts_predictive.experiments.plotting import generate_all_plots
+from rts_predictive.schedulers.edf import EDFScheduler
+from rts_predictive.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.schedulers.predictive_runtime import PredictiveRuntimeScheduler
 
 
-def generate_paper_artifacts(
-    output_dir: str = "results/paper",
-    plots_dir: str = "results/plots",
-):
-    """Generate the legacy demonstration bundle.
+POLICIES = {
+    "local_fifo": LocalFIFOScheduler,
+    "edf": EDFScheduler,
+    "predictive_runtime": PredictiveRuntimeScheduler,
+}
 
-    These outputs are not provenance-backed research evidence.  Callers may
-    redirect both destinations so validation does not mutate tracked artifacts.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    generate_all_plots(plots_dir)
 
-    # -----------------------------------------------------------------------
-    # 1. Benchmark Data Dictionary (Zero Hallucination Verified Data)
-    # -----------------------------------------------------------------------
-    benchmark_results = {
-        "Local-FIFO": {
-            "total_misses": 19,
-            "critical_misses": 12,
-            "miss_ratio_pct": 13.2,
-            "wcrt_ms": 104.8,
-            "jitter_ms": 21.4,
-            "fallbacks_invoked": 0,
-            "offloads_dispatched": 0,
-            "status": "CRITICAL_VIOLATION"
-        },
-        "RM-Local": {
-            "total_misses": 14,
-            "critical_misses": 9,
-            "miss_ratio_pct": 9.7,
-            "wcrt_ms": 91.5,
-            "jitter_ms": 17.8,
-            "fallbacks_invoked": 0,
-            "offloads_dispatched": 0,
-            "status": "CRITICAL_VIOLATION"
-        },
-        "EDF-Local (Baseline)": {
-            "total_misses": 11,
-            "critical_misses": 8,
-            "miss_ratio_pct": 7.6,
-            "wcrt_ms": 86.2,
-            "jitter_ms": 15.5,
-            "fallbacks_invoked": 0,
-            "offloads_dispatched": 0,
-            "status": "CRITICAL_VIOLATION"
-        },
-        "Always-Offload": {
-            "total_misses": 8,
-            "critical_misses": 6,
-            "miss_ratio_pct": 5.6,
-            "wcrt_ms": 72.4,
-            "jitter_ms": 14.2,
-            "fallbacks_invoked": 0,
-            "offloads_dispatched": 24,
-            "status": "CHANNEL_OVERLOAD"
-        },
-        "Reactive-Degradation": {
-            "total_misses": 5,
-            "critical_misses": 3,
-            "miss_ratio_pct": 3.5,
-            "wcrt_ms": 48.0,
-            "jitter_ms": 12.1,
-            "fallbacks_invoked": 12,
-            "offloads_dispatched": 0,
-            "status": "SLACK_DEPLETED"
-        },
-        "GhostGuard (Proposed)": {
-            "total_misses": 0,
-            "critical_misses": 0,
-            "miss_ratio_pct": 0.0,
-            "wcrt_ms": 18.2,
-            "jitter_ms": 8.4,
-            "fallbacks_invoked": 44,
-            "offloads_dispatched": 2,
-            "status": "MISSION_PROTECTED"
-        }
+def reduce_event_stream(path):
+    """Derive released jobs, misses, response times, and jitter from JSONL."""
+    releases, misses, commits, responses = {}, set(), set(), {}
+    offloads = fallbacks = 0
+    utilities = []
+    for event in iter_canonical_events(path):
+        task_id = event.get("task_id")
+        payload = event["payload"]
+        kind = event["event_type"]
+        if kind == "OFFLOAD_DISPATCH":
+            offloads += 1
+        elif kind in ("FALLBACK_TRIGGER", "OFFLOAD_ABORT"):
+            fallbacks += 1
+        if kind == "TASK_READY" and task_id:
+            if task_id in releases:
+                raise ValueError(f"duplicate release: {task_id}")
+            releases[task_id] = (event["timestamp_us"], payload["task_name"],
+                                 bool(payload["is_critical"]))
+        elif kind == "DEADLINE" and task_id:
+            misses.add(task_id)
+        elif kind == "TASK_COMMIT" and task_id:
+            if task_id not in releases or task_id in commits:
+                raise ValueError(f"invalid commit: {task_id}")
+            commits.add(task_id)
+            utilities.append(float(payload.get("output_utility", 1.0)))
+            if payload.get("deadline_met") is False:
+                misses.add(task_id)
+            released_at, name, _ = releases[task_id]
+            responses.setdefault(name, []).append(event["timestamp_us"] - released_at)
+    if misses - releases.keys():
+        raise ValueError("deadline event without task release")
+    critical = {task_id for task_id, (_, _, flag) in releases.items() if flag}
+    n = len(releases)
+    all_responses = [value for values in responses.values() for value in values]
+    return {
+        "released": n,
+        "missed": len(misses),
+        "critical_released": len(critical),
+        "critical_missed": len(misses & critical),
+        "total_dmr": len(misses) / n if n else None,
+        "critical_dmr": len(misses & critical) / len(critical) if critical else None,
+        "wcrt_us": {name: max(values) for name, values in responses.items()},
+        "jitter_us": {name: max(values) - min(values) for name, values in responses.items()},
+        "response_times_us": all_responses,
+        "average_response_time_us": sum(all_responses) / len(all_responses) if all_responses else None,
+        "average_utility": sum(utilities) / len(utilities) if utilities else None,
+        "offload_dispatches": offloads,
+        "fallbacks": fallbacks,
+        "censored": len(releases.keys() - misses - commits),
     }
 
-    # -----------------------------------------------------------------------
-    # 2. Formal Response Time Analysis Proofs
-    # -----------------------------------------------------------------------
-    rta_proofs = []
-    for name, p in DEFAULT_TASK_PROFILES.items():
-        if name == "BackgroundLogging":
-            continue
-        res = TimingAnalyzer.verify_fallback_mode(name)
-        rta_proofs.append({
-            "task_name": name,
-            "is_critical": p.is_critical,
-            "period_ms": p.period_ms,
-            "deadline_ms": p.deadline_ms,
-            "nominal_wcet_ms": p.wcet_ms,
-            "degraded_wcet_ms": p.degraded_wcet_ms,
-            "worst_case_response_time_ms": res.worst_case_response_time_ms,
-            "interference_bound_ms": res.interference_bound_ms,
-            "is_verified": res.is_verified,
-            "margin_ms": round(p.deadline_ms - res.worst_case_response_time_ms, 2)
-        })
 
-    # -----------------------------------------------------------------------
-    # 3. Export Machine-Readable PAPER_DATA.json
-    # -----------------------------------------------------------------------
-    paper_data = {
-        "metadata": {
-            "framework": "GhostGuard",
-            "version": "2.0-research",
-            "date_generated": datetime.now(timezone.utc).isoformat(),
-            "scenario": "Section 12 Deterministic Failure Benchmark",
-            "seed": 42
-        },
-        "benchmarks": benchmark_results,
-        "rta_verification": rta_proofs,
-        "gnn_overhead": {
-            "model": "2-layer GraphSAGE / GCN",
-            "mean_inference_cpu_ms": 0.22,
-            "p99_inference_cpu_ms": 0.31,
-            "max_budget_cap_ms": 0.35,
-            "overhead_fraction_of_perception_slack_pct": 1.22
-        }
-    }
+def generate_paper_artifacts(output_dir="research_runs/paper", plots_dir="research_runs/plots",
+                             *, duration_ms=100, seeds=(42,)):
+    output = Path(output_dir)
+    raw_dir = output / "raw_runs"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    source = code_provenance()
+    records = []
+    for seed in seeds:
+        for policy, scheduler_factory in POLICIES.items():
+            run_id = f"bursty-{seed}-{policy}"
+            sim = create_bursty_scenario(seed=seed, fleet_size=3, duration_ms=duration_ms)
+            sim.run_id = run_id
+            sim.attach_scheduler(scheduler_factory())
+            sim.run(duration_ms=duration_ms)
+            event_path = raw_dir / f"{run_id}.jsonl"
+            with CanonicalEventWriter(event_path, run_id) as writer:
+                for event in sim.canonical_events:
+                    writer.write(event)
+                event_sha256 = writer.sha256
+            manifest = {
+                "schema_version": "rts_predictive.run-manifest/1.0",
+                "run_id": run_id, "scenario": "bursty", "seed": seed,
+                "policy": policy, "duration_us": duration_ms * 1000,
+                **source,
+                "event_file": str(event_path.resolve()),
+                "event_sha256": event_sha256,
+                "event_count": len(sim.canonical_events),
+            }
+            manifest_path = raw_dir / f"{run_id}.manifest.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            records.append({"manifest": str(manifest_path),
+                            "metrics": reduce_event_stream(event_path)})
 
-    json_path = os.path.join(output_dir, "PAPER_DATA.json")
-    with open(json_path, "w") as f:
-        json.dump(paper_data, f, indent=2)
-    print(f"[Paper Artifacts] Wrote {json_path}")
-
-    # -----------------------------------------------------------------------
-    # 4. Export Table 1: Benchmark Summary LaTeX Table
-    # -----------------------------------------------------------------------
-    table1_tex = r"""% Table 1: Benchmark Schedulability Summary under Section 12 Scenario
-\begin{table}[t]
-\centering
-\small
-\caption{Quantitative Performance Comparison Across Schedulers under Section 12 Injected Contention Scenario.}
-\label{tab:benchmark_summary}
-\begin{tabular}{lcccccc}
-\toprule
-\textbf{Scheduler Policy} & \textbf{Total Misses} & \textbf{Critical Misses} & \textbf{DMR (\%)} & \textbf{WCRT (ms)} & \textbf{Jitter (ms)} & \textbf{Fallbacks} \\
-\midrule
-Local-FIFO             & 19 & 12 & 13.2\% & 104.8 & 21.4 & 0  \\
-RM-Local               & 14 & 9  & 9.7\%  & 91.5  & 17.8 & 0  \\
-EDF-Local (Baseline)   & 11 & 8  & 7.6\%  & 86.2  & 15.5 & 0  \\
-Always-Offload         & 8  & 6  & 5.6\%  & 72.4  & 14.2 & 0  \\
-Reactive-Degradation   & 5  & 3  & 3.5\%  & 48.0  & 12.1 & 12 \\
-\midrule
-\textbf{GhostGuard (Proposed)} & \textbf{0}  & \textbf{0}  & \textbf{0.0\%}  & \textbf{18.2}  & \textbf{8.4}  & \textbf{44} \\
-\bottomrule
-\end{tabular}
-\end{table}
-"""
-    table1_path = os.path.join(output_dir, "table1_benchmark_summary.tex")
-    with open(table1_path, "w") as f:
-        f.write(table1_tex)
-    print(f"[Paper Artifacts] Wrote {table1_path}")
-
-    # -----------------------------------------------------------------------
-    # 5. Export Table 2: RTA Verification LaTeX Table
-    # -----------------------------------------------------------------------
-    table2_tex = r"""% Table 2: Formal Response Time Analysis (RTA) Bounds under Degraded Fallback Mode
-\begin{table}[t]
-\centering
-\small
-\caption{Formal Response Time Analysis (RTA) Bounds and Schedulability Margins under Degraded Fallback Mode.}
-\label{tab:rta_proof}
-\begin{tabular}{lcccccc}
-\toprule
-\textbf{Task Stage $\tau_i$} & \textbf{Period $T_i$} & \textbf{Deadline $D_i$} & \textbf{Nominal $C_i$} & \textbf{Degraded $C_i^{\text{deg}}$} & \textbf{WCRT $R_i$} & \textbf{Status} \\
-\midrule
-Sense             & 20.0 ms & 20.0 ms & 3.0 ms  & 1.5 ms & 1.5 ms  & \textsc{Verified Safe} \\
-ObstacleDetection & 20.0 ms & 20.0 ms & 8.0 ms  & 2.5 ms & 4.0 ms  & \textsc{Verified Safe} \\
-Perception        & 33.0 ms & 33.0 ms & 15.0 ms & 5.0 ms & 18.2 ms & \textsc{Verified Safe} \\
-Actuation         & 10.0 ms & 10.0 ms & 2.0 ms  & 1.0 ms & 1.0 ms  & \textsc{Verified Safe} \\
-\bottomrule
-\end{tabular}
-\end{table}
-"""
-    table2_path = os.path.join(output_dir, "table2_rta_verification.tex")
-    with open(table2_path, "w") as f:
-        f.write(table2_tex)
-    print(f"[Paper Artifacts] Wrote {table2_path}")
-
-    # -----------------------------------------------------------------------
-    # 6. Export PAPER_EXTRACTS.md (Complete paper sections & pseudocode)
-    # -----------------------------------------------------------------------
-    extracts_md = f"""# GhostGuard: Research Methodology, Formal Schedulability & Paper Extracts
-
-**Repository:** GhostGuard Real-Time Systems Prototype (RTS2)  
-**Date:** {datetime.now(timezone.utc).strftime("%B %d, %Y")}  
-**Authors:** Mayur Raju, P Gnandeep, P Maruthi, P Sanjay, S Sudharsan Reddy  
-**Instructor:** Dr. Swagatika Sahoo  
-
----
-
-## 1. Executive Research Summary
-Autonomous edge robots and distributed AI fleets operate under hard and firm real-time constraints. Unpredictable resource contention (thermal throttling, GPU execution bursts, and channel jitter) causes traditional reactive scheduling policies like Earliest Deadline First (EDF) to fail unrecoverably.
-
-**GhostGuard** addresses this fundamental gap through a unified **4-Stage Predictive Runtime Arbitration Engine**:
-1. **Stage 1 (Sub-millisecond GNN Risk Estimation):** Evaluates runtime graph state in $T_{{\\text{{infer}}}} \\le 0.35\\text{{ ms}}$, forecasting impending deadline breaches long before slack depletes.
-2. **Stage 2 (Cooperative Offload Feasibility):** Dispatches tasks to reliable neighboring nodes if and only if $t + 2\\delta_{{\\text{{comm}}}} + T_{{\\text{{exec}}}} + \\Delta_{{\\text{{margin}}}} \\le D_i$.
-3. **Stage 3 (Active In-Flight Watchdog):** Continuously monitors the health of remote candidate nodes. If remote contention or link degradation occurs, it immediately aborts remote reliance.
-4. **Stage 4 (Verified Degraded Fallback):** Instantly activates a local quantized/pruned fallback model ($C_i^{{\\text{{deg}}}}$) mathematically guaranteed by Response Time Analysis (RTA) to finish before $D_i$.
-
----
-
-## 2. Mathematical Timing & Schedulability Formulations
-
-### 2.1 Degraded Mode Response Time Analysis (RTA)
-When a critical task $\\tau_i$ executes in fallback mode, non-critical logging tasks are suspended, and its worst-case response time $R_i$ is bounded by:
-$$R_i = C_i^{{\\text{{deg}}}} + \\sum_{{j \\in hp(i)}} \\left\\lceil \\frac{{R_i}}{{T_j}} \\right\\rceil C_j^{{\\text{{deg}}}} \\le D_i$$
-
-### 2.2 Numerical Proof for Perception Task
-For critical **Perception** (Nominal $C = 15.0\\text{{ ms}}$, Degraded $C^{{\\text{{deg}}}} = 5.0\\text{{ ms}}$, Period $T = 33.0\\text{{ ms}}$, Deadline $D = 33.0\\text{{ ms}}$):
-- Higher priority interferers:
-  - `Sense`: $C^{{\\text{{deg}}}} = 1.5\\text{{ ms}}$, $T = 20.0\\text{{ ms}}$ (up to 2 releases $\\implies 3.0\\text{{ ms}}$)
-  - `ObstacleDetection`: $C^{{\\text{{deg}}}} = 2.5\\text{{ ms}}$, $T = 20.0\\text{{ ms}}$ (up to 2 releases $\\implies 5.0\\text{{ ms}}$)
-  - `Actuation`: $C^{{\\text{{deg}}}} = 1.0\\text{{ ms}}$, $T = 10.0\\text{{ ms}}$ (up to 4 releases $\\implies 4.0\\text{{ ms}}$)
-  - Total worst-case interference $I_i = 3.0 + 5.0 + 4.0 = 12.0\\text{{ ms}}$.
-- Worst-Case Response Time:
-  $$R_{{\\text{{Perception}}}} = 5.0\\text{{ ms}} + 12.0 + 1.2\\text{{ ms (overhead)}} = 18.2\\text{{ ms}} \\le 33.0\\text{{ ms}}$$
-- **Safety Slack Margin:** $+14.8\\text{{ ms}}$ $\\implies$ **Mathematically Safe**.
-
----
-
-## 3. GhostGuard 4-Stage Runtime Arbitration Algorithm
-
-```latex
-\\begin{{algorithm}}[t]
-\\caption{{GhostGuard 4-Stage Predictive Runtime Arbitration}}
-\\label{{alg:ghostguard}}
-\\begin{{algorithmic}}[1]
-\\STATE \\textbf{{Input:}} Released task $\\tau_i$, current time $t$, local device $d_k$, neighbor mesh $\\mathcal{{N}}_k$
-\\STATE Compute graph feature tensor $\\mathbf{{X}}_t$ from ready queues, slack $S_i(t)$, and device temperatures
-\\STATE $p_{{\\text{{miss}}}}, \\Delta t_{{\\text{{viol}}}}, \\text{{cause}} \\leftarrow \\text{{GNNPredictor}}(\\mathbf{{X}}_t)$
-\\IF{{$p_{{\\text{{miss}}}} < \\tau_{{\\text{{risk}}}}$ \\textbf{{or}} $\\tau_i$ is non-critical}}
-    \\STATE Dispatch locally via Earliest Deadline First (EDF)
-\\ELSE
-    \\STATE \\COMMENT{{Stage 2: Evaluate cooperative offloading}}
-    \\STATE candidate $\\leftarrow \\text{{SelectCandidate}}(\\mathcal{{N}}_k, \\tau_i, t)$
-    \\IF{{candidate is valid \\textbf{{and}} $t + 2\\delta_{{\\text{{comm}}}} + \\hat{{T}}_{{\\text{{exec}}}} + \\Delta_{{\\text{{margin}}}} \\le D_i$}}
-        \\STATE Dispatch $\\tau_i$ to candidate; Arm Watchdog Timer at $t_{{\\text{{check}}}} = t + \\delta_{{\\text{{comm}}}} + 0.5\\hat{{T}}_{{\\text{{exec}}}}$
-    \\ELSE
-        \\STATE \\COMMENT{{Stage 4: Trigger Verified Local Fallback}}
-        \\STATE Activate quantized INT8 model ($C_i^{{\\text{{deg}}}}$); Insert at head of local queue
-    \\ENDIF
-\\ENDIF
-\\STATE \\COMMENT{{Stage 3: Watchdog Interrupt Callback}}
-\\UPON{{Watchdog Check Triggered at $t_{{\\text{{check}}}}$}}
-\\IF{{candidate load $> 90\\%$ \\textbf{{or}} link degraded \\textbf{{or}} $D_i - t \\le C_i^{{\\text{{deg}}}} + 1.0\\text{{ms}}$}}
-    \\STATE Abort remote offload; Apply verified fallback locally on $d_k$; Guarantee deadline
-\\ENDIF
-\\end{{algorithmic}}
-\\end{{algorithm}}
-```
-
----
-
-## 4. Benchmark Schedulability Evaluation (Section 12 Scenario)
-
-| Policy | Total Misses | Critical Misses | DMR (%) | WCRT (ms) | Jitter (ms) | Fallbacks | Verdict |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Local-FIFO** | 19 | 12 | 13.2% | 104.8 | 21.4 | 0 | Severe Safety Violation |
-| **RM-Local** | 14 | 9 | 9.7% | 91.5 | 17.8 | 0 | Critical Deadline Misses |
-| **EDF-Local (Baseline)** | 11 | 8 | 7.6% | 86.2 | 15.5 | 0 | Baseline Failure Under Contention |
-| **Always-Offload** | 8 | 6 | 5.6% | 72.4 | 14.2 | 0 | Channel & Queue Saturated |
-| **Reactive-Degrade** | 5 | 3 | 3.5% | 48.0 | 12.1 | 12 | Triggers Too Late (Slack Gone) |
-| **GhostGuard (Proposed)** | **0** | **0** | **0.0%** | **18.2** | **8.4** | **44** | **100% Deadlines Preserved Safe** |
-
----
-
-## 5. Ready-to-Paste LaTeX Table Snippets
-
-### Table 1: Benchmark Summary
-```latex
-{table1_tex}
-```
-
-### Table 2: Formal RTA Proof Table
-```latex
-{table2_tex}
-```
-"""
-
-    extracts_path = os.path.join(output_dir, "PAPER_EXTRACTS.md")
-    with open(extracts_path, "w", encoding="utf-8") as f:
-        f.write(extracts_md)
-    print(f"[Paper Artifacts] Wrote {extracts_path}")
-
-    # Generate provenance sidecar
-    try:
-        from ghostguard.artifacts.canonical import canonical_json_bytes, sha256_file
-        file_records = {}
-        for fname in sorted(os.listdir(output_dir)):
-            if fname == "provenance.json":
-                continue
-            fpath = os.path.join(output_dir, fname)
-            if os.path.isfile(fpath):
-                file_records[fname] = {
-                    "size_bytes": os.path.getsize(fpath),
-                    "sha256": sha256_file(fpath),
-                }
-
-        provenance_data = {
-            "schema_version": "1.0.0",
-            "evidence_type": "DEMONSTRATION",
-            "bundle_type": "legacy_demonstration_artifacts",
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "code_revision": "research-v1",
-            "files": file_records,
-            "disclaimer": (
-                "Legacy demonstration artifacts. These values illustrate the proposed pipeline "
-                "and are not yet backed by empirical run provenance."
-            )
-        }
-        provenance_path = os.path.join(output_dir, "provenance.json")
-        with open(provenance_path, "wb") as f:
-            f.write(canonical_json_bytes(provenance_data) + b"\n")
-        print(f"[Paper Artifacts] Wrote {provenance_path}")
-    except Exception as e:
-        print(f"[Paper Artifacts] Warning: could not write provenance.json: {e}")
+    lines = [r"\begin{table}[t]", r"\centering",
+             r"\caption{Simulated task outcomes from canonical event streams.}",
+             r"\begin{tabular}{lrrrr}", r"\toprule",
+             r"Policy & Released & Missed & Total DMR & Critical DMR \\",
+             r"\midrule"]
+    for record in records:
+        manifest = json.loads(Path(record["manifest"]).read_text(encoding="utf-8"))
+        metric = record["metrics"]
+        total = "--" if metric["total_dmr"] is None else f'{metric["total_dmr"]:.4f}'
+        critical = "--" if metric["critical_dmr"] is None else f'{metric["critical_dmr"]:.4f}'
+        lines.append(f'{manifest["policy"]} ({manifest["seed"]}) & {metric["released"]} & '
+                     f'{metric["missed"]} & {total} & {critical} ' + r"\\")
+    lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
+    table_path = output / "table1_benchmark_summary.tex"
+    table_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    figures = generate_all_plots(records, plots_dir)
+    index = {"schema_version": "rts_predictive.artifact-index/1.0", "runs": records,
+             "table": str(table_path), "figures": figures}
+    (output / "PAPER_DATA.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
+    return index
 
 
 if __name__ == "__main__":

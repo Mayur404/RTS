@@ -4,14 +4,14 @@ and Single-Commit Invariants.
 """
 
 import pytest
-from ghostguard.config import GhostGuardConfig, HARDWARE_PROFILES, DEFAULT_TASK_PROFILES
-from ghostguard.domain.specs import create_autonomous_ai_pipeline_spec
-from ghostguard.simulator.engine import DiscreteEventSimulator
-from ghostguard.simulator.device import DeviceNode
-from ghostguard.simulator.tasks import TaskInstance, TaskState
-from ghostguard.simulator.events import EventType
-from ghostguard.schedulers.edf import EDFScheduler
-from ghostguard.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.config import PredictiveRuntimeConfig, HARDWARE_PROFILES, DEFAULT_TASK_PROFILES
+from rts_predictive.domain.specs import create_autonomous_ai_pipeline_spec
+from rts_predictive.simulator.engine import DiscreteEventSimulator
+from rts_predictive.simulator.device import DeviceNode
+from rts_predictive.simulator.tasks import TaskInstance, TaskState
+from rts_predictive.simulator.events import EventType
+from rts_predictive.schedulers.edf import EDFScheduler
+from rts_predictive.schedulers.local_fifo import LocalFIFOScheduler
 
 
 def test_dag_pipeline_spec_creation():
@@ -24,7 +24,7 @@ def test_dag_pipeline_spec_creation():
 
 def test_dag_pipeline_job_precedence_progression():
     """Verify that downstream tasks are only released when predecessors complete."""
-    config = GhostGuardConfig(simulation_duration_ms=100.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=100.0)
     sim = DiscreteEventSimulator(config=config, seed=42, fleet_size=2)
     sim.attach_scheduler(LocalFIFOScheduler())
 
@@ -54,11 +54,18 @@ def test_dag_pipeline_job_precedence_progression():
     ]
     assert len(pipeline_events) == 1
     assert pipeline_events[0]["job_id"] == job_id
+    task_events = [
+        event for event in sim.canonical_events
+        if event["event_type"] in {"TASK_READY", "TASK_COMMIT"}
+    ]
+    assert task_events
+    assert all(event["job_id"] == job_id for event in task_events)
+    assert all(event["attempt_id"] for event in task_events)
 
 
 def test_dag_pipeline_output_utility_accounting():
     """Verify that utility is recorded in metrics."""
-    config = GhostGuardConfig(simulation_duration_ms=80.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=80.0)
     sim = DiscreteEventSimulator(config=config, seed=123, fleet_size=2)
     sim.attach_scheduler(EDFScheduler())
 
@@ -75,7 +82,7 @@ def test_dag_pipeline_output_utility_accounting():
 
 def test_single_commit_late_result_discarded():
     """Verify that a late result from an abandoned offload attempt is discarded."""
-    config = GhostGuardConfig(simulation_duration_ms=100.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=100.0)
     sim = DiscreteEventSimulator(config=config, seed=99, fleet_size=2)
 
     task = TaskInstance.from_profile(
@@ -109,4 +116,36 @@ def test_single_commit_late_result_discarded():
         if e.get("event_type") == "LATE_RESULT_DISCARDED"
     ]
     assert len(discarded) == 1
-    assert discarded[0]["payload"]["task_id"] == "perc_test_late"
+    assert discarded[0]["task_id"] == "perc_test_late"
+
+
+def test_future_pipeline_release_is_causal():
+    sim = DiscreteEventSimulator(seed=3, fleet_size=1)
+    job_id = sim.schedule_pipeline_job(create_autonomous_ai_pipeline_spec(), 10.0)
+    assert not sim.canonical_events
+    sim.run(9.0)
+    assert not any(e["event_type"] == "PIPELINE_RELEASE" for e in sim.canonical_events)
+    sim.run(10.0)
+    releases = [e for e in sim.canonical_events if e["event_type"] == "PIPELINE_RELEASE"]
+    assert len(releases) == 1
+    assert releases[0]["job_id"] == job_id
+    assert releases[0]["timestamp_us"] == 10_000
+
+
+def test_remote_pipeline_stage_releases_successor_only_after_result_arrival():
+    sim = DiscreteEventSimulator(seed=4, fleet_size=2)
+    job_id = sim.schedule_pipeline_job(create_autonomous_ai_pipeline_spec(), 0.0)
+    sim.run(0.0)
+    source = sim.pipeline_jobs[job_id]["tasks"]["Sense"]
+    origin = sim.devices["Device_1"]
+    origin.record_offload_dispatch(source, "Device_2", 0.0, 1.0)
+    sim.attach_scheduler(LocalFIFOScheduler())
+    sim.schedule_offload_request(source, "Device_2")
+    sim.run(40.0)
+    returned = next(e["timestamp_us"] for e in sim.canonical_events
+                    if e["event_type"] == "RESULT_TX_END" and e["task_id"] == source.instance_id)
+    successor = sim.pipeline_jobs[job_id]["tasks"].get("ObstacleDetection")
+    assert successor is not None
+    ready = next(e["timestamp_us"] for e in sim.canonical_events
+                 if e["event_type"] == "TASK_READY" and e["task_id"] == successor.instance_id)
+    assert ready >= returned

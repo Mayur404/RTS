@@ -1,47 +1,60 @@
-# GhostGuard Research Evidence Status
+# PredictiveRuntime research readiness
 
-**Status date:** 2026-09-20  
-**Prototype checkpoint:** `demo-v0`
+**Audit date:** 2026-09-24
+**Status:** Working simulator prototype; research claims remain conditional.
 
-The current repository contains a functional demonstration prototype, not yet a validated research result. The implementation and UI can illustrate the proposed workflow, but the existing headline benchmark numbers, plots, and timing claims must not be cited as empirical evidence.
+The simulator runs and its automated tests pass. This is evidence of the
+implemented behavior, not proof that the simulator accurately represents a
+physical real-time system. No 100% correctness or physical safety claim is
+supported.
 
-## What is currently usable
+## Checks performed
 
-- A deterministic demonstration flow for local execution, offload, watchdog intervention, and fallback.
-- Prototype scheduler, GNN, federated-learning, API, dashboard, plotting, and timing-analysis modules.
-- A baseline automated test suite.
-- A detailed research-grade implementation and UI plan.
+- The complete repository suite passes over 100 tests on 2026-09-24.
+- A future pipeline release is now emitted at its scheduled time. A remote
+  pipeline stage releases successors only when its result reaches the origin.
+  A stage's relative deadline starts when the stage becomes ready and is capped
+  by the pipeline end-to-end deadline. See ADR 0006.
+- A task-specific nine-feature GNN was trained on future deadline outcomes,
+  calibrated on validation seeds, and packaged with an integrity hash. Its
+  held-out simulator test contains 224 samples (AUROC 0.8063, AUPRC 0.8080,
+  ECE 0.0481). These are simulation-derived model results.
+- The FedAvg remote estimator uses accumulated execution service observations,
+  disjoint train/validation/test seeds, and a versioned bundle. Its 745-sample
+  simulator test reports 1.68 ms MAE and 0.953 empirical q95 coverage.
+- Deadline events and terminal task states now agree in the checked bursty
+  run, and its state and canonical-event reductions both report 7 misses.
+  API v1 replay frames no longer invent utilization or temperature values.
+- One-run benchmark summaries use null for undefined variance. Policy
+  regressions remain visible as negative baseline-minus-policy miss counts.
+- The full policy loads both bundles. Prediction latency is observed during
+  each run and reported as count, p50, p95, and maximum rather than embedded
+  as a constant.
+- Live sessions extend DAG releases beyond their initial scheduling window,
+  expose cursor-based canonical events, and prune history to a bounded rolling
+  window. Live output is marked `LIVE_NON_EVIDENCE`.
 
-## Known evidence blockers
+## Blocking gaps for a research claim
 
-- The current deadline-expiry and metric lifecycle can classify missed tasks incorrectly.
-- Workload stages are independently periodic rather than released through a true DAG.
-- Remote execution completion is based on scheduled estimates rather than committed remote-result events.
-- The normal GhostGuard experiment path does not inject the trained GNN or federated estimator.
-- Several ablation switches do not change executable behavior.
-- Current timing analysis is a one-pass sufficient bound, not exact iterative fixed-priority RTA, and is not bound to the runtime scheduler configuration.
-- Dashboard milestones and several publication plots/tables contain authored or synthetic values rather than reductions over canonical run events.
-- Existing `results/summary.json` and paper-facing tables disagree materially.
+1. The engine still represents execution work and some link and thermal timing
+   in floating point milliseconds. The event queue quantizes to integer
+   microseconds, but the whole simulator does not yet satisfy the integer-time
+   invariant.
+2. Predictor inference and federated communication are not consistently charged
+   as foreground/background resource demand in the simulator. Network retries,
+   propagation variation, and hardware-calibrated WCETs are not validated.
+3. The packaged models have in-family simulated held-out tests but still need
+   out-of-family scenarios and independent trace or hardware validation.
+4. Published experiments still need at least 30 paired seeds, sensitivity
+   studies, event/metric reconciliation, and independent
+   validation against an established simulator or measured hardware traces.
+5. The fixed-priority certificate covers only its stated uniprocessor task
+   model and assumptions. It does not certify the dynamic offload pipeline or
+   physical hardware.
 
-## Evidence labels
+## Evidence rule
 
-- **DEMONSTRATION:** Authored walkthrough intended to explain the proposed control flow.
-- **SIMULATED:** Derived from a versioned simulator run and canonical event stream.
-- **PREDICTED:** Produced by a named model bundle.
-- **MEASURED:** Timed on identified hardware with a recorded method.
-- **ANALYTICAL:** Produced by a configuration-bound timing certificate under explicit assumptions.
-
-Until the acceptance gates in `Implementation Plan.md` are satisfied, the Section 12 dashboard and existing paper figures must be labeled **DEMONSTRATION**. Phrases such as “guaranteed safe,” “100% temporal safety,” and “empirically measured” are not supported by the current artifacts.
-
-## Promotion gate
-
-Results may be promoted from demonstration to research evidence only when:
-
-1. Simulator lifecycle and deadline accounting invariants pass.
-2. Metrics are reduced from canonical events.
-3. Predictor and federated model identities are recorded in run manifests.
-4. Ablations alter the intended component graph.
-5. Timing certificates match the scheduler, task set, resource model, overheads, and configuration hashes.
-6. Figures and tables list their source run IDs and checksums.
-7. Repeated paired-seed results include uncertainty and effect sizes.
-
+Only cite results reduced from canonical events and bound to a run manifest.
+Use **SIMULATED**, **PREDICTED**, **MEASURED**, or **ANALYTICAL** with the
+corresponding source and assumptions. Do not describe an uncalibrated model as
+calibrated or a simulator result as a hardware measurement.

@@ -4,12 +4,12 @@ Unit tests for Federated Learning (FedAvg) and Decentralized Execution Modeling.
 
 import torch
 import pytest
-from ghostguard.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES
-from ghostguard.simulator.device import DeviceNode
-from ghostguard.simulator.tasks import TaskInstance
-from ghostguard.federated.model import DeviceExecutionReliabilityModel
-from ghostguard.federated.client import FederatedClient
-from ghostguard.federated.server import FedAvgServer
+from rts_predictive.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES
+from rts_predictive.simulator.device import DeviceNode
+from rts_predictive.simulator.tasks import TaskInstance
+from rts_predictive.federated.model import DeviceExecutionReliabilityModel
+from rts_predictive.federated.client import FederatedClient
+from rts_predictive.federated.server import FedAvgServer
 
 
 def test_federated_model_and_client():
@@ -49,3 +49,28 @@ def test_fedavg_aggregation():
     history = server.run_federated_rounds(num_rounds=2, local_epochs=1)
     assert history["num_rounds"] == 2
     assert len(history["round_history"]) == 2
+    for record in history["round_history"]:
+        assert record["transmission_bytes"] == 2 * record["model_bytes"] * record["participating_clients"]
+
+
+def test_fedavg_uses_dataset_sample_weights_exactly():
+    class FixedClient:
+        def __init__(self, samples, weight):
+            self.samples = samples
+            self.weight = weight
+            self.template = None
+
+        def set_weights(self, weights):
+            self.template = weights
+
+        def train_local(self, epochs):
+            return {"samples": self.samples}
+
+        def get_weights(self):
+            return {key: torch.full_like(value, self.weight)
+                    for key, value in self.template.items()}
+
+    server = FedAvgServer(clients=[FixedClient(1, 0.0), FixedClient(3, 4.0)])
+    server.run_federated_rounds(num_rounds=1, local_epochs=1)
+    for parameter in server.global_model.state_dict().values():
+        assert torch.allclose(parameter, torch.full_like(parameter, 3.0))

@@ -1,11 +1,11 @@
-# GhostGuard System Architecture
+# PredictiveRuntime System Architecture
 
 ## 1. Overview
-GhostGuard is a predictive runtime protection framework designed for distributed fleets of heterogeneous edge devices (autonomous drones, robots, and smart edge nodes). Real-time AI mission pipelines operate under strict timing deadlines ($D_i$) where exceeding a deadline leads to critical failures (e.g., missed collision avoidance, delayed control actuation).
+PredictiveRuntime is a predictive runtime protection framework designed for distributed fleets of heterogeneous edge devices (autonomous drones, robots, and smart edge nodes). Real-time AI mission pipelines operate under strict timing deadlines ($D_i$) where exceeding a deadline leads to critical failures (e.g., missed collision avoidance, delayed control actuation).
 
 ```
 +-----------------------------------------------------------------------------------------+
-|                                    GHOSTGUARD NODE                                      |
+|                                    PREDICTIVE_RUNTIME NODE                                      |
 |                                                                                         |
 |   +---------------------------------------------------------------------------------+   |
 |   |                       Real-Time Multi-Stage AI Pipeline                         |   |

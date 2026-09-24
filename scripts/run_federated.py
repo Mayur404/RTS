@@ -1,84 +1,127 @@
-"""Run FedAvg and save a reproducible pooled-data reference comparison."""
+"""Train, calibrate, evaluate, and package the federated remote estimator."""
 
-import sys
-import os
+from __future__ import annotations
+
+import hashlib
 import json
+import os
+import sys
+from pathlib import Path
+
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ghostguard.config import GhostGuardConfig, HARDWARE_PROFILES
-from ghostguard.simulator.engine import DiscreteEventSimulator
-from ghostguard.federated.client import FederatedClient
-from ghostguard.federated.server import FedAvgServer
-from ghostguard.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.federated.client import FederatedClient
+from rts_predictive.federated.model import DeviceExecutionReliabilityModel
+from rts_predictive.federated.server import FedAvgServer
+from rts_predictive.gnn.calibration import TemperatureCalibrator, brier_score, expected_calibration_error
+from rts_predictive.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.simulator.engine import DiscreteEventSimulator
+
+
+def collect_observations(seed: int, duration_ms: float = 500.0):
+    sim = DiscreteEventSimulator(fleet_size=6, seed=seed)
+    sim.schedule_periodic_tasks(duration_ms=duration_ms)
+    sim.schedule_contention_burst("Device_1", 80.0, 180.0, cpu_load=0.95, gpu_load=0.95)
+    sim.schedule_contention_burst("Device_2", 180.0, 140.0, cpu_load=1.1, gpu_load=1.0)
+    sim.attach_scheduler(LocalFIFOScheduler())
+    sim.run(duration_ms=duration_ms)
+    observations = []
+    for task in sim.all_tasks:
+        if task.executed_service_ms <= 0 or task.execution_start_cpu_util is None:
+            continue
+        dev = sim.devices[task.device_id]
+        feature = DeviceExecutionReliabilityModel.extract_features(
+            task, dev,
+            cpu_utilization=task.execution_start_cpu_util,
+            gpu_utilization=task.execution_start_gpu_util,
+        )
+        observations.append((
+            task.device_id, task, dev, feature, task.executed_service_ms,
+            1.0 if task.deadline_met is True else 0.0,
+        ))
+    return observations
+
+
+def evaluate(model, observations, calibrator):
+    time_errors, probabilities, outcomes, q95_covered = [], [], [], []
+    with torch.no_grad():
+        for _, _, _, feature, actual_ms, success in observations:
+            predicted_ms, predicted_rel = model(feature)
+            mean_ms = float(predicted_ms[0, 0].item())
+            probability = calibrator.apply(float(predicted_rel[0, 0].item()))
+            time_errors.append(abs(mean_ms - actual_ms))
+            probabilities.append(probability)
+            outcomes.append(int(success))
+            q95_covered.append(actual_ms <= mean_ms * model.q95_multiplier)
+    return {
+        "samples": len(observations),
+        "execution_mae_ms": sum(time_errors) / len(time_errors),
+        "reliability_brier": brier_score(probabilities, outcomes),
+        "reliability_ece": expected_calibration_error(probabilities, outcomes),
+        "q95_empirical_coverage": sum(q95_covered) / len(q95_covered),
+    }
 
 
 def main():
-    # Make model initialization and local SGD reproducible alongside simulator seed 42.
     torch.manual_seed(42)
-    print("==================================================")
-    print("     GHOSTGUARD FEDERATED LEARNING (FedAvg)       ")
-    print("==================================================")
+    train = collect_observations(42) + collect_observations(101)
+    validation = collect_observations(201)
+    test = collect_observations(301)
 
-    # 1. Run quick simulation to populate private client execution logs
-    sim = DiscreteEventSimulator(fleet_size=6, seed=42)
-    sim.schedule_periodic_tasks(duration_ms=400.0)
-    sim.attach_scheduler(LocalFIFOScheduler())
-    sim.run(duration_ms=400.0)
-
-    # 2. Initialize Federated Clients
     clients = []
-    for dev_id, dev in sim.devices.items():
-        client = FederatedClient(client_id=dev_id, lr=0.005)
-        # Populate traces from device completed tasks
-        for task in dev.completed_tasks + dev.deadline_missed_tasks:
-            client.record_trace(
-                task=task,
-                dev=dev,
-                actual_exec_ms=task.response_time_ms or task.nominal_wcet_ms,
-                success=task.deadline_met if task.deadline_met is not None else False
-            )
+    for device_id in sorted({row[0] for row in train}):
+        client = FederatedClient(device_id, lr=0.005)
+        for row_device, task, dev, _, actual_ms, success in train:
+            if row_device == device_id:
+                client.record_trace(task, dev, actual_ms, bool(success))
         clients.append(client)
 
-    server = FedAvgServer(clients=clients)
+    server = FedAvgServer(clients)
+    rounds = server.run_federated_rounds(num_rounds=8, local_epochs=3)
+    model = server.global_model
+    model.eval()
 
-    # Generate test samples from global tasks
-    test_samples = []
-    for t in sim.all_tasks[-40:]:
-        dev = sim.devices.get(t.device_id)
-        if dev:
-            from ghostguard.federated.model import DeviceExecutionReliabilityModel
-            feat = DeviceExecutionReliabilityModel.extract_features(t, dev)
-            test_samples.append((feat, t.nominal_wcet_ms, 1.0 if t.deadline_met else 0.0))
+    raw_probabilities, validation_outcomes, ratios = [], [], []
+    with torch.no_grad():
+        for _, _, _, feature, actual_ms, success in validation:
+            predicted_ms, predicted_rel = model(feature)
+            mean_ms = max(1e-6, float(predicted_ms[0, 0].item()))
+            raw_probabilities.append(float(predicted_rel[0, 0].item()))
+            validation_outcomes.append(int(success))
+            ratios.append(actual_ms / mean_ms)
+    calibrator = TemperatureCalibrator.fit(raw_probabilities, validation_outcomes)
+    ratios.sort()
+    q95_index = min(len(ratios) - 1, int(0.95 * len(ratios)))
+    model.q95_multiplier = max(1.0, ratios[q95_index])
+    metrics = evaluate(model, test, calibrator)
 
-    print(f"Decentralized Fleet: {len(clients)} Heterogeneous Edge Nodes")
-    print(f"Total Local Execution Logs: {sum(len(c.local_traces) for c in clients)}")
-
-    # 3. Run Federated Rounds
-    print("\nExecuting FedAvg Decentralized Training Rounds...")
-    fl_results = server.run_federated_rounds(num_rounds=5, local_epochs=3, test_samples=test_samples)
-
-    for r in fl_results["round_history"]:
-        print(f"  Round {r['round']} | Participating Nodes: {r['participating_clients']} | MAE Exec Time: {r.get('mae_exec_time_ms', 'N/A')} ms | Reliability Acc: {r.get('reliability_accuracy', 'N/A')}")
-
-    # 4. Compare with centralized pooled-data reference (privacy-violating)
-    print("\nBenchmarking Centralized Pooled-Data Reference...")
-    cent_res = server.train_centralized_upper_bound(total_epochs=15, test_samples=test_samples)
-    print(f"  Centralized Reference MAE Exec Time: {cent_res.get('centralized_mae_ms', 'N/A'):.3f} ms")
-
-    os.makedirs("results", exist_ok=True)
-    artifact = {
-        "federated_rounds": fl_results["round_history"],
-        "centralized_pooled_data_reference": cent_res,
-        "seed": 42,
+    model_dir = Path("models")
+    model_dir.mkdir(exist_ok=True)
+    weights_path = model_dir / "federated_remote_estimator.pt"
+    torch.save(model.state_dict(), weights_path)
+    bundle = {
+        "bundle_version": "rts_predictive.federated-bundle/1",
+        "feature_schema": "remote-execution/6-v1",
+        "weights_sha256": hashlib.sha256(weights_path.read_bytes()).hexdigest(),
+        "training": {
+            "algorithm": "FedAvg", "rounds": 8, "local_epochs": 3,
+            "train_seeds": [42, 101], "validation_seeds": [201], "test_seeds": [301],
+            "clients": len(clients), "train_samples": len(train),
+            "transmission_bytes": sum(row["transmission_bytes"] for row in rounds["round_history"]),
+        },
+        "reliability_calibration": {
+            "method": "temperature_scaling", "temperature": calibrator.temperature,
+        },
+        "latency_q95_multiplier": model.q95_multiplier,
+        "test_metrics": metrics,
+        "evidence": "SIMULATION_EVALUATED",
     }
-    with open(os.path.join("results", "federated_results.json"), "w") as output:
-        json.dump(artifact, output, indent=2)
-    print("  Saved: results/federated_results.json")
-
-    print("\nFederated Learning evaluation completed successfully.")
-    print("==================================================")
+    weights_path.with_suffix(".bundle.json").write_text(
+        json.dumps(bundle, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    print(json.dumps(bundle, indent=2))
 
 
 if __name__ == "__main__":

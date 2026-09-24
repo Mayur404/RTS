@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from ghostguard.domain import (
+from rts_predictive.domain import (
     AttemptKind,
     AttemptState,
     CanonicalEvent,
@@ -80,13 +80,13 @@ def test_integer_microsecond_validation_rejects_floats_and_negative_values():
 def test_spec_hashes_are_canonical_stable_and_sensitive_to_data():
     left_parameters = {"risk": 0.6, "nested": {"b": 2, "a": [1, 3]}}
     right_parameters = {"nested": {"a": [1, 3], "b": 2}, "risk": 0.6}
-    left = PolicySpec("ghostguard", "1.0", left_parameters)
-    right = PolicySpec("ghostguard", "1.0", right_parameters)
+    left = PolicySpec("rts_predictive", "1.0", left_parameters)
+    right = PolicySpec("rts_predictive", "1.0", right_parameters)
 
     assert left.to_json() == right.to_json()
     assert left.configuration_hash == right.configuration_hash
     assert len(left.configuration_hash) == 64
-    assert PolicySpec("ghostguard", "1.0", {"risk": 0.7}).config_hash != left.config_hash
+    assert PolicySpec("rts_predictive", "1.0", {"risk": 0.7}).config_hash != left.config_hash
 
     left_parameters["risk"] = 0.1
     left_parameters["nested"]["a"].append(99)

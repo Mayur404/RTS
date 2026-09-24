@@ -1,3 +1,0 @@
-"""
-GhostGuard REST API Package.
-"""

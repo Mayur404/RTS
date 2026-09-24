@@ -19,7 +19,7 @@ The prototype labels fallback as verified even though its one-pass timing estima
 
 ## Consequences
 
-- Current GhostGuard and EDF configurations cannot receive a certificate until runtime semantics match a supported analyzer.
+- Current PredictiveRuntime and EDF configurations cannot receive a certificate until runtime semantics match a supported analyzer.
 - EDF demand-bound analysis is deferred to a later, separate analysis type.
 - Paper tables must render from certificate data or state `NOT CERTIFIED`.
 

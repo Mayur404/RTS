@@ -1,0 +1,36 @@
+{
+  "bundle_version": "rts_predictive.federated-bundle/1",
+  "evidence": "SIMULATION_EVALUATED",
+  "feature_schema": "remote-execution/6-v1",
+  "latency_q95_multiplier": 2.252152123975109,
+  "reliability_calibration": {
+    "method": "temperature_scaling",
+    "temperature": 0.8500000000000001
+  },
+  "test_metrics": {
+    "execution_mae_ms": 1.681679614068356,
+    "q95_empirical_coverage": 0.9530201342281879,
+    "reliability_brier": 0.09466514694344288,
+    "reliability_ece": 0.01412225123457785,
+    "samples": 745
+  },
+  "training": {
+    "algorithm": "FedAvg",
+    "clients": 6,
+    "local_epochs": 3,
+    "rounds": 8,
+    "test_seeds": [
+      301
+    ],
+    "train_samples": 1506,
+    "train_seeds": [
+      42,
+      101
+    ],
+    "transmission_bytes": 535296,
+    "validation_seeds": [
+      201
+    ]
+  },
+  "weights_sha256": "a124504baa396d656f14ee11acff70dbf50e2a8fb674b5439aca2bb020aa1e0d"
+}

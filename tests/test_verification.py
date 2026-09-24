@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from ghostguard.verification import (
+from rts_predictive.verification import (
     AnalysisProvenance,
     AnalysisRequest,
     CertificateBinding,
@@ -185,7 +185,14 @@ def test_iteration_limit_is_inconclusive_never_verified():
     assert not low.converged
 
 
-@pytest.mark.parametrize("analysis_type", ["EDF", "EDF_DBF", "GHOSTGUARD"])
+def test_iteration_limit_cannot_exceed_mathematical_audit_cap():
+    certificate = TimingAnalyzer.analyze_task_set(
+        default_degraded_critical_tasks(), max_iterations=1001
+    )
+    assert certificate.status is VerificationStatus.INVALID_INPUT
+
+
+@pytest.mark.parametrize("analysis_type", ["EDF", "EDF_DBF", "PREDICTIVE_RUNTIME"])
 def test_unsupported_scheduler_never_produces_results(analysis_type):
     certificate = TimingAnalyzer.analyze_task_set(
         default_degraded_critical_tasks(), analysis_type=analysis_type

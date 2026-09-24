@@ -1,427 +1,111 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GhostGuard // Continuous Real-Time Autonomous Fleet Protection</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-primary: #F8FAFC;
-            --bg-card: #FFFFFF;
-            --border-subtle: #E2E8F0;
-            --border-focus: #3B82F6;
-            --text-primary: #0F172A;
-            --text-secondary: #475569;
-            --text-muted: #94A3B8;
-        }
-        body {
-            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
-            background-size: 24px 24px;
-        }
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .clean-card {
-            background: #FFFFFF;
-            border: 1px solid #E2E8F0;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-            transition: box-shadow 0.2s ease, border-color 0.2s ease;
-        }
-        .clean-card:hover {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-        }
-        .btn-control {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-weight: 600;
-            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .btn-control:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
-        }
-        .btn-control:active:not(:disabled) {
-            transform: translateY(0);
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #F1F5F9;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #CBD5E1;
-            border-radius: 3px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94A3B8;
-        }
-        .pulse-live {
-            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @keyframes pulse-ring {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(1.04); }
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>PredictiveRuntime | Research Console</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/light.css">
+  <script src="/static/app.js" defer></script>
 </head>
-<body class="p-3 sm:p-5 md:p-6 max-w-[1520px] mx-auto space-y-4">
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="#live" aria-label="PredictiveRuntime home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>Predictive<span>Runtime</span></strong><small>RESEARCH CONSOLE</small></span>
+      </a>
 
-    <!-- TOP NAVIGATION & BRANDING -->
-    <header class="clean-card p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-l-4 border-l-blue-600">
-        <div>
-            <div class="flex items-center gap-2">
-                <span class="relative flex h-3 w-3">
-                    <span id="live-indicator-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span id="live-indicator-dot" class="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
-                </span>
-                <span class="text-xs font-bold tracking-wider text-blue-700 uppercase mono">
-                    Real-Time Systems Research // Autonomous Fleet Computing
-                </span>
-                <span id="global-evidence-badge" class="px-2 py-0.5 rounded text-[10px] font-bold mono bg-blue-50 text-blue-700 border border-blue-200">
-                    CONTINUOUS SIMULATION
-                </span>
-            </div>
-            <h1 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
-                GhostGuard
-                <span class="text-slate-400 font-normal text-lg sm:text-xl">Predictive Runtime Mesh Protection</span>
-            </h1>
-            <p class="text-xs sm:text-sm text-slate-600 mt-0.5 max-w-3xl">
-                Real-time discrete-event execution of distributed robot fleets with proactive GNN risk arbitration, in-flight watchdog aborts, and provable local fallback.
-            </p>
+      <div class="sidebar-section-label">WORKSPACES</div>
+      <nav class="nav-list" aria-label="Workspaces">
+        <button type="button" class="nav-item is-active" data-view="live" aria-current="page"><span class="nav-glyph">◫</span><span>Live simulation</span></button>
+        <button type="button" class="nav-item" data-view="experiments"><span class="nav-glyph">▥</span><span>Experiments</span></button>
+        <button type="button" class="nav-item" data-view="models"><span class="nav-glyph">◇</span><span>Models</span></button>
+        <button type="button" class="nav-item" data-view="evidence"><span class="nav-glyph">◎</span><span>Evidence guide</span></button>
+        <button type="button" class="nav-item" data-view="verification"><span class="nav-glyph">▤</span><span>Verification</span></button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-note">
+        <span class="note-icon">i</span>
+        <div><strong>Simulation environment</strong><p>Results describe the configured model. They are not hardware safety claims.</p></div>
+      </div>
+      <div class="sidebar-bottom"><span class="status-dot" id="api-dot"></span><span id="api-status">Connecting to API</span><a href="/docs" target="_blank" rel="noopener">API docs ↗</a></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>WORKSPACE</span><span class="crumb-slash">/</span><strong id="view-title">Live simulation</strong></div>
+        <div class="topbar-right"><span class="evidence-pill">● SIMULATED DATA</span><span class="topbar-time" id="topbar-clock">t = 0.000 ms</span></div>
+      </header>
+
+      <section class="view is-visible" id="view-live" aria-labelledby="live-heading">
+        <div class="page-heading">
+          <div><p class="eyebrow">DISTRIBUTED REAL-TIME SYSTEMS / 01</p><h1 id="live-heading">Fleet simulation <span class="heading-accent">workspace.</span></h1><p>Inspect execution, contention, and policy decisions as the simulated clock advances.</p></div>
+          <div class="heading-meta"><span class="signal" id="run-signal"></span><span id="run-status">READY TO RUN</span></div>
         </div>
 
-        <!-- CLOCK & GLOBAL STATUS -->
-        <div class="flex flex-wrap items-center gap-3">
-            <!-- Digital Clock Display -->
-            <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 flex flex-col items-end">
-                <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 mono">Simulation Clock</div>
-                <div id="clock-display" class="text-2xl font-extrabold text-slate-900 mono">
-                    00:00.000 <span class="text-xs font-normal text-slate-500">s</span>
-                </div>
-                <div id="clock-ms-sub" class="text-[11px] font-semibold text-blue-600 mono">
-                    0.0 ms
-                </div>
+        <div class="live-grid">
+          <section class="panel scenario-panel" aria-labelledby="scenario-title">
+            <div class="panel-heading"><div><p class="eyebrow">CONFIGURATION</p><h2 id="scenario-title">Scenario controls</h2></div><span class="panel-index">01</span></div>
+            <label class="field"><span>Fleet size</span><select id="fleet-size"><option value="4">4 edge nodes</option><option value="6">6 edge nodes</option><option value="8">8 edge nodes</option></select></label>
+            <label class="field"><span>Random seed</span><input id="live-seed" type="number" min="0" step="1" value="42"></label>
+            <label class="field"><span>Simulation horizon</span><select id="live-horizon"><option value="1000">1,000 ms</option><option value="3000" selected>3,000 ms</option><option value="5000">5,000 ms</option></select></label>
+            <div class="field"><span>Playback speed</span><div class="segmented" role="group" aria-label="Playback speed"><button type="button" data-speed="0.5">0.5×</button><button type="button" class="is-active" data-speed="1">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="5">5×</button></div></div>
+            <div class="divider"></div>
+            <p class="eyebrow">FAULT INJECTION</p>
+            <div class="fault-grid"><button class="fault-button" type="button" data-fault="gpu"><span>↗</span><strong>GPU contention</strong><small>Node 1</small></button><button class="fault-button" type="button" data-fault="peer"><span>◇</span><strong>Peer overload</strong><small>Node 2</small></button><button class="fault-button" type="button" data-fault="network"><span>⌁</span><strong>Link delay</strong><small>Node 1</small></button><button class="fault-button" type="button" data-fault="thermal"><span>◈</span><strong>Thermal stress</strong><small>Node 1</small></button></div>
+            <p class="small-note">Faults are inserted at the current simulation time. Effects depend on the configured model.</p>
+          </section>
+
+          <div class="live-main">
+            <section class="panel transport-panel" aria-label="Simulation playback">
+              <div><p class="eyebrow">SIMULATION CLOCK</p><div class="clock-value" id="clock-value">0.000 <small>ms</small></div><p class="clock-sub" id="clock-sub">Ready for a deterministic run</p></div>
+              <div class="transport-actions"><button class="button button-primary" id="play-button" type="button"><span id="play-icon">▶</span><span id="play-label">Start simulation</span></button><button class="button button-secondary" id="step-button" type="button">Step +25 ms</button><button class="button button-quiet" id="reset-button" type="button">Reset</button></div>
+              <div class="progress-track" role="progressbar" aria-label="Simulation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="run-progress"><span id="progress-fill"></span></div>
+            </section>
+
+            <section class="metrics-grid" aria-label="Policy metrics">
+              <article class="metric-card metric-primary"><div class="metric-top"><span>Predictive</span><span class="tag tag-teal">HEURISTIC</span></div><strong id="primary-dmr">—</strong><span class="metric-label">Deadline miss ratio</span><div class="metric-foot"><span id="primary-misses">— misses</span><span id="primary-critical">— critical</span></div></article>
+              <article class="metric-card"><div class="metric-top"><span>EDF baseline</span><span class="tag tag-muted">BASELINE</span></div><strong id="baseline-dmr">—</strong><span class="metric-label">Deadline miss ratio</span><div class="metric-foot"><span id="baseline-misses">— misses</span><span id="baseline-critical">— critical</span></div></article>
+              <article class="metric-card"><div class="metric-top"><span>Policy actions</span><span class="tag tag-amber">SIMULATED</span></div><strong id="action-count">—</strong><span class="metric-label">Offload dispatches</span><div class="metric-foot"><span id="fallback-count">— fallbacks</span><span id="completed-count">— on-time</span></div></article>
+              <article class="metric-card"><div class="metric-top"><span>Response time</span><span class="tag tag-muted">SINGLE RUN</span></div><strong id="response-max">—</strong><span class="metric-label">Maximum completed response time</span><div class="metric-foot"><span>No worst-case guarantee</span></div></article>
+            </section>
+
+            <div class="visual-grid">
+              <section class="panel topology-panel" aria-labelledby="topology-title"><div class="panel-heading"><div><p class="eyebrow">SIMULATION CANVAS</p><h2 id="topology-title">Explore the live system</h2></div><div class="legend"><span><i class="legend-dot nominal"></i> Nominal</span><span><i class="legend-dot stressed"></i> Stressed</span><span><i class="legend-dot fallback"></i> Fallback</span></div></div><div class="graph-tabs" role="tablist" aria-label="Simulation graph"><button type="button" class="graph-tab is-active" data-graph="fleet" role="tab" aria-selected="true">Fleet map</button><button type="button" class="graph-tab" data-graph="dag" role="tab" aria-selected="false">Workload DAG</button><button type="button" class="graph-tab" data-graph="interaction" role="tab" aria-selected="false">Interaction graph</button></div><div class="topology-wrap"><svg id="topology-svg" class="graph-svg" viewBox="0 0 900 540" role="img" aria-label="Live simulated fleet topology"></svg><svg id="dag-svg" class="graph-svg" viewBox="0 0 1000 540" role="img" aria-label="Live workload dependency graph" hidden></svg><svg id="interaction-svg" class="graph-svg" viewBox="0 0 900 540" role="img" aria-label="Live node interaction graph" hidden></svg><div class="empty-overlay" id="topology-empty">Preparing fleet topology…</div></div><div class="device-key" id="device-key" aria-label="Device types in this fleet"></div><div class="graph-description" id="graph-description">Drag nodes to arrange this view. Their simulated positions and links stay unchanged.</div><div class="panel-footer"><span>Simulated state · selected node drives the DAG view</span><span id="active-packets">0 active offloads</span></div></section>
+              <section class="panel node-panel" aria-labelledby="node-title"><div class="panel-heading"><div><p class="eyebrow">NODE INSPECTOR</p><h2 id="node-title">Node details</h2></div><span class="panel-index" id="selected-node-id">01</span></div><div id="node-detail" class="node-detail"><p class="muted">Select a node in the fleet map to inspect its state.</p></div></section>
             </div>
 
-            <!-- Health Status Pill -->
-            <div class="flex flex-col items-end gap-1">
-                <div id="mesh-health-pill" class="px-3 py-1 rounded-full text-xs font-bold mono bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>ALL FLEET NODES SYNCHRONIZED</span>
-                </div>
-                <span class="text-[11px] text-slate-600 mono">REST API: <a href="/docs" target="_blank" class="text-blue-600 hover:underline">/api/v1/runs</a></span>
+            <div class="lower-grid">
+              <section class="panel chart-panel" aria-labelledby="chart-title"><div class="panel-heading"><div><p class="eyebrow">OBSERVED TREND</p><h2 id="chart-title">Deadline miss ratio over time</h2></div><span class="panel-index">%</span></div><div class="chart-legend"><span><i class="line-key primary"></i> PredictiveRuntime</span><span><i class="line-key baseline"></i> EDF</span></div><svg id="trend-chart" viewBox="0 0 640 220" role="img" aria-label="Observed deadline miss ratio chart"></svg><p class="small-note">One simulated seed. No confidence interval is implied.</p></section>
+              <section class="panel event-panel" aria-labelledby="event-title"><div class="panel-heading"><div><p class="eyebrow">EVENT STREAM</p><h2 id="event-title">Recent execution events</h2></div><span class="event-count" id="event-count">0 events</span></div><div id="event-list" class="event-list" aria-live="polite"><div class="empty-state">Events will appear as the simulation advances.</div></div></section>
             </div>
+          </div>
         </div>
-    </header>
+      </section>
 
-    <!-- CONTINUOUS PLAYBACK CONTROL CENTER -->
-    <section class="clean-card p-4 flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200">
-        <!-- Play / Pause / Step Controls -->
-        <div class="flex items-center gap-2">
-            <button id="btn-play-pause" class="btn-control px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-sm shadow-sm">
-                <span id="play-icon">▶</span>
-                <span id="play-text">Start Simulation</span>
-            </button>
-            <button id="btn-step" class="btn-control px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-sm flex items-center gap-1.5">
-                <span>⏭</span>
-                <span>Step (+10ms)</span>
-            </button>
-            <button id="btn-reset" class="btn-control px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-sm flex items-center gap-1.5">
-                <span>🔄</span>
-                <span>Reset</span>
-            </button>
-        </div>
+      <section class="view" id="view-experiments" aria-labelledby="experiments-heading">
+        <div class="page-heading"><div><p class="eyebrow">REPRODUCIBLE RUNS / 02</p><h1 id="experiments-heading">Experiment <span class="heading-accent">lab.</span></h1><p>Execute a single seeded scenario and inspect its canonical events and provenance.</p></div></div>
+        <div class="experiment-grid"><section class="panel experiment-form-panel"><div class="panel-heading"><div><p class="eyebrow">RUN BUILDER</p><h2>Configure experiment</h2></div><span class="panel-index">02</span></div><form id="experiment-form"><label class="field"><span>Scenario family</span><select id="exp-scenario"><option value="bursty">Bursty contention</option><option value="nominal">Nominal</option><option value="thermal">Thermal</option><option value="unreliable">Unreliable peer</option></select></label><label class="field"><span>Scheduling policy</span><select id="exp-policy"><option value="rts_predictive">PredictiveRuntime · heuristic</option><option value="rts_predictive_gnn">PredictiveRuntime · saved GNN</option><option value="edf">Earliest deadline first</option><option value="rm">Rate monotonic</option><option value="local_fifo">Local FIFO</option><option value="reactive_fallback">Reactive fallback</option><option value="always_offload">Always offload</option><option value="predictive_no_fallback">Predictive, no fallback</option></select></label><div class="form-row"><label class="field"><span>Seed</span><input id="exp-seed" type="number" min="0" step="1" value="42" required></label><label class="field"><span>Duration · ms</span><input id="exp-duration" type="number" min="10" max="2000" step="10" value="300" required></label></div><label class="field"><span>Fleet size</span><select id="exp-fleet"><option value="2">2 nodes</option><option value="4" selected>4 nodes</option><option value="6">6 nodes</option><option value="8">8 nodes</option></select></label><button class="button button-primary wide-button" type="submit" id="run-experiment-button">Run seeded experiment <span>↗</span></button></form><p class="small-note">Each run stores its seed, policy, component identities, source hash, and event checksum in the API session.</p></section>
+        <div class="experiment-results"><section class="panel result-panel"><div class="panel-heading"><div><p class="eyebrow">RUN RESULT</p><h2 id="result-title">No experiment selected</h2></div><span class="tag tag-teal" id="result-evidence">SIMULATED</span></div><div id="result-empty" class="result-empty"><span class="result-empty-icon">▥</span><h3>Ready when you are</h3><p>Choose a scenario and run it to see observed metrics, provenance, and the event record.</p></div><div id="result-content" hidden><div class="result-stat-grid"><div><span>Released tasks</span><strong id="result-released">—</strong></div><div><span>Missed deadlines</span><strong id="result-missed">—</strong></div><div><span>Critical misses</span><strong id="result-critical">—</strong></div><div><span>Observed max response</span><strong id="result-response">—</strong></div></div><div class="result-bar"><div><span>Run ID</span><code id="result-run-id">—</code></div><button class="button button-secondary" type="button" id="export-run-button">Export JSON</button></div><details class="manifest-details"><summary>Provenance manifest <span>⌄</span></summary><pre id="result-manifest"></pre></details></div></section><section class="panel"><div class="panel-heading"><div><p class="eyebrow">CANONICAL RECORD</p><h2>Event timeline</h2></div><span class="event-count" id="result-event-count">0 events</span></div><div id="result-events" class="result-events"><div class="empty-state">No event record loaded.</div></div></section></div></div>
+        <section class="panel compare-panel"><div class="panel-heading"><div><p class="eyebrow">PAIRED SCENARIO</p><h2>Quick policy comparison</h2></div><button type="button" class="button button-secondary" id="compare-button">Compare selected scenario</button></div><p class="small-note">Uses the scenario, seed, and duration above for the heuristic policy and EDF. A single seed does not establish a reliable performance difference.</p><div id="compare-output" class="compare-output"><div class="empty-state">Run a comparison to view policy results.</div></div></section>
+      </section>
 
-        <!-- Simulation Speed -->
-        <div class="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span>Speed:</span>
-            <div class="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
-                <button class="speed-btn px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 hover:text-slate-900" data-speed="0.25">0.25x</button>
-                <button class="speed-btn px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 hover:text-slate-900" data-speed="0.5">0.5x</button>
-                <button class="speed-btn px-2.5 py-1 rounded-md text-xs font-bold bg-white text-blue-700 shadow-sm" data-speed="1.0">1.0x</button>
-                <button class="speed-btn px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 hover:text-slate-900" data-speed="2.0">2.0x</button>
-                <button class="speed-btn px-2.5 py-1 rounded-md text-xs font-bold text-slate-600 hover:text-slate-900" data-speed="5.0">5.0x</button>
-            </div>
-        </div>
+      <section class="view" id="view-models" aria-labelledby="models-heading"><div class="page-heading"><div><p class="eyebrow">MODEL INVENTORY / 03</p><h1 id="models-heading">Model <span class="heading-accent">status.</span></h1><p>Inspect what is available, what is active, and what has not been validated.</p></div><button type="button" class="button button-secondary" id="refresh-models">Refresh status</button></div><div class="model-grid"><article class="panel model-card"><div class="panel-heading"><div><p class="eyebrow">RISK PREDICTOR</p><h2>Graph neural network</h2></div><span class="tag tag-amber" id="gnn-evidence">LOADING</span></div><div id="gnn-model-detail" class="model-detail"><p class="muted">Loading model inventory…</p></div></article><article class="panel model-card"><div class="panel-heading"><div><p class="eyebrow">REMOTE ESTIMATOR</p><h2>Federated model</h2></div><span class="tag tag-amber" id="fl-evidence">LOADING</span></div><div id="fl-model-detail" class="model-detail"><p class="muted">Loading model inventory…</p></div></article></div><div class="panel model-explainer"><span class="note-icon">i</span><div><h3>What the default simulation uses</h3><p>The live workspace and default PredictiveRuntime experiment use a heuristic risk score and static remote estimator. Select the saved GNN policy in the experiment builder to execute its weights. Saved weights are not a calibration certificate or a hardware measurement.</p></div></div></section>
 
-        <!-- Fleet Mesh Size -->
-        <div class="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span>Fleet Mesh:</span>
-            <select id="select-fleet-size" class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                <option value="4">4 Nodes (Drone, Server, Rover, Arm)</option>
-                <option value="6">6 Nodes (+Scout Drone, Edge TPU)</option>
-                <option value="8">8 Nodes (Full Mesh Fleet)</option>
-            </select>
-        </div>
+      <section class="view" id="view-evidence" aria-labelledby="evidence-heading"><div class="page-heading"><div><p class="eyebrow">METHODS & BOUNDARIES / 04</p><h1 id="evidence-heading">Read the <span class="heading-accent">evidence.</span></h1><p>Keep simulated outcomes, model predictions, host measurements, and analysis certificates separate.</p></div></div><div class="evidence-grid"><article class="panel evidence-card"><span class="evidence-symbol teal">◉</span><h2>Simulated</h2><p>Produced by the discrete-event model under a named scenario and seed. Deadline outcomes and node resource states belong here.</p></article><article class="panel evidence-card"><span class="evidence-symbol blue">◇</span><h2>Predicted</h2><p>A heuristic or learned estimate used to choose an action. The estimate can be wrong and is not a timing bound.</p></article><article class="panel evidence-card"><span class="evidence-symbol amber">◷</span><h2>Measured</h2><p>Timed on specified hardware with a recorded method. No such latency is asserted by this dashboard without a run record.</p></article><article class="panel evidence-card"><span class="evidence-symbol rose">▤</span><h2>Analytical</h2><p>A response-time analysis result under explicit task and scheduler assumptions. No matching certificate is attached to live runs.</p></article></div><section class="panel limits-panel"><div><p class="eyebrow">CURRENT LIMITS</p><h2>Research prototype, bounded claims</h2><p>The simulator uses floating point execution work, simplified network and resource models, and no hardware-calibrated worst-case execution times. The default policy is heuristic. Saved GNN weights and the federated estimator lack a publication-ready validation bundle.</p></div><div class="limits-links"><a href="/docs" target="_blank" rel="noopener">Explore API docs ↗</a></div></section></section>
 
-        <!-- Live Status Tag -->
-        <div class="flex items-center gap-2">
-            <span class="text-xs font-semibold text-slate-600">Scheduler:</span>
-            <span class="px-2.5 py-1 rounded-lg text-xs font-extrabold mono bg-emerald-50 text-emerald-800 border border-emerald-300">
-                GhostGuard (4-Tier)
-            </span>
-            <span class="text-xs text-slate-600 font-bold">vs</span>
-            <span class="px-2.5 py-1 rounded-lg text-xs font-bold mono bg-rose-50 text-rose-800 border border-rose-300">
-                EDF Baseline
-            </span>
-        </div>
-    </section>
+      <section class="view" id="view-verification" aria-labelledby="verification-heading">
+        <div class="page-heading"><div><p class="eyebrow">CONDITIONAL ANALYSIS / 05</p><h1 id="verification-heading">Timing <span class="heading-accent">verification.</span></h1><p>Run iterative fixed-priority response-time analysis under explicit single-processor assumptions.</p></div><button type="button" class="button button-primary" id="run-verification">Analyze degraded partition</button></div>
+        <section class="panel result-panel"><div class="panel-heading"><div><p class="eyebrow">HASH-BOUND CERTIFICATE</p><h2 id="verification-status">No analysis executed</h2></div><span class="tag tag-muted" id="verification-tag">ANALYTICAL</span></div><div id="verification-output" class="result-empty"><p>The certificate applies only to the displayed task set, scheduler, hardware model, and assumptions.</p></div></section>
+      </section>
 
-    <!-- MAIN DASHBOARD GRID (2 Columns: Mesh & Fault Injection / Performance & Feed) -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-
-        <!-- LEFT COLUMN: Physical Mesh Topology Canvas & Fault Injection (8 Cols) -->
-        <div class="lg:col-span-8 space-y-4">
-
-            <!-- TOPOLOGY CANVAS CARD -->
-            <div class="clean-card p-4 relative bg-white flex flex-col">
-                <div class="flex justify-between items-center mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-                        <h2 class="font-extrabold text-sm uppercase tracking-wider text-slate-800 mono">
-                            Physical Fleet Mesh & Live Communication Links
-                        </h2>
-                    </div>
-                    <div class="flex items-center gap-2 text-xs font-medium text-slate-500">
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Nominal</span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> Stressed</span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span> Overloaded</span>
-                    </div>
-                </div>
-
-                <!-- Canvas Container -->
-                <div class="relative w-full h-[460px] bg-slate-50/70 border border-slate-200 rounded-xl overflow-hidden">
-                    <canvas id="topology-canvas" width="900" height="460" class="w-full h-full block cursor-crosshair"></canvas>
-
-                    <!-- Interactive Hover Tooltip -->
-                    <div id="node-tooltip" class="hidden absolute pointer-events-none z-30 p-3 bg-white border border-slate-200 rounded-xl shadow-xl text-xs space-y-1.5 min-w-[210px]">
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-1">
-                            <span id="tt-name" class="font-extrabold text-slate-900">Node</span>
-                            <span id="tt-type" class="px-1.5 py-0.5 rounded text-[10px] font-bold mono bg-slate-100 text-slate-700">Type</span>
-                        </div>
-                        <div class="text-[11px] text-slate-600" id="tt-role">Role</div>
-                        <div class="space-y-1 pt-1">
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">CPU Load:</span> <span id="tt-cpu" class="font-bold mono text-slate-800">0%</span></div>
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">GPU Load:</span> <span id="tt-gpu" class="font-bold mono text-slate-800">0%</span></div>
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">Temperature:</span> <span id="tt-temp" class="font-bold mono text-slate-800">0°C</span></div>
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">Active Task:</span> <span id="tt-task" class="font-bold mono text-blue-600">Sense</span></div>
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">Ready Queue:</span> <span id="tt-queue" class="font-bold mono text-slate-800">0 tasks</span></div>
-                            <div class="flex justify-between text-[11px]"><span class="text-slate-500">Fallbacks Invoked:</span> <span id="tt-fallbacks" class="font-bold mono text-emerald-600">0</span></div>
-                        </div>
-                    </div>
-
-                    <!-- In-Canvas Live Alert Banner -->
-                    <div id="canvas-alert-banner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-xl bg-amber-50 border border-amber-300 shadow-md flex items-center gap-2 text-xs font-bold text-amber-800">
-                        <span id="canvas-alert-icon">⚠️</span>
-                        <span id="canvas-alert-text">Watchdog Alert</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ON-THE-FLY FAULT INJECTION CONTROLS -->
-            <div class="clean-card p-4 bg-white border border-slate-200">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                        <h3 class="font-extrabold text-xs uppercase tracking-wider text-slate-800 mono">
-                            Interactive Dynamic Contention & Fault Injection Bar
-                        </h3>
-                    </div>
-                    <span class="text-[11px] text-slate-500">Inject dynamic perturbations in real-time</span>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                    <!-- Quick Trigger 1: Drone 1 GPU Burst -->
-                    <button id="btn-fault-gpu" class="btn-control p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100 text-left transition flex flex-col justify-between">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-blue-900">💥 95% GPU Surge</span>
-                            <span class="text-[10px] font-bold mono bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded">Node 1</span>
-                        </div>
-                        <span class="text-[11px] text-blue-700 mt-1">Triggers proactive GNN prediction & offload</span>
-                    </button>
-
-                    <!-- Quick Trigger 2: Server 2 Secondary Shock -->
-                    <button id="btn-fault-server" class="btn-control p-2.5 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100 text-left transition flex flex-col justify-between">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-amber-900">⚡ Secondary Shock</span>
-                            <span class="text-[10px] font-bold mono bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">Node 2</span>
-                        </div>
-                        <span class="text-[11px] text-amber-700 mt-1">Triggers active in-flight watchdog abort</span>
-                    </button>
-
-                    <!-- Quick Trigger 3: Wireless Jitter Spike -->
-                    <button id="btn-fault-jitter" class="btn-control p-2.5 rounded-xl border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-left transition flex flex-col justify-between">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-purple-900">📶 Mesh Channel Jitter</span>
-                            <span class="text-[10px] font-bold mono bg-purple-200 text-purple-800 px-1.5 py-0.5 rounded">+15 ms</span>
-                        </div>
-                        <span class="text-[11px] text-purple-700 mt-1">Injects stochastic link transmission delay</span>
-                    </button>
-
-                    <!-- Quick Trigger 4: Severe Thermal Throttling -->
-                    <button id="btn-fault-thermal" class="btn-control p-2.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-left transition flex flex-col justify-between">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-rose-900">🔥 Thermal Throttle</span>
-                            <span class="text-[10px] font-bold mono bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded">&gt;85°C</span>
-                        </div>
-                        <span class="text-[11px] text-rose-700 mt-1">DVFS clock downshift by 50%</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- LIVE ACTIVITY EVENT STREAM -->
-            <div class="clean-card p-4 bg-white border border-slate-200">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                        <h3 class="font-extrabold text-xs uppercase tracking-wider text-slate-800 mono">
-                            Real-Time Execution & Canonical Event Stream
-                        </h3>
-                    </div>
-                    <span id="event-count-badge" class="text-[11px] font-semibold text-slate-500 mono">0 events logged</span>
-                </div>
-                <div id="event-stream-container" class="h-44 overflow-y-auto space-y-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs">
-                    <div class="text-slate-400 italic text-center py-6">
-                        Simulation ready. Click "Start Simulation" to stream real-time events.
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- RIGHT COLUMN: Side-by-Side KPIs & Real-Time Rolling Plotly Chart (4 Cols) -->
-        <div class="lg:col-span-4 space-y-4">
-
-            <!-- KPI CARD 1: GHOSTGUARD (PROPOSED) -->
-            <div class="clean-card p-5 border-2 border-emerald-500/80 bg-gradient-to-br from-emerald-50/40 via-white to-white relative overflow-hidden shadow-sm">
-                <div class="flex justify-between items-center mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
-                        <h3 class="font-extrabold text-emerald-800 text-xs tracking-wider uppercase mono">
-                            PROPOSED: GHOSTGUARD
-                        </h3>
-                    </div>
-                    <span id="stat-gg-badge" class="px-2 py-0.5 rounded text-[10px] font-bold mono bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        CONTINUOUS
-                    </span>
-                </div>
-
-                <div id="stat-gg-misses" class="text-2xl sm:text-3xl font-extrabold mono text-emerald-700 mt-1 mb-0.5">
-                    0 Deadline Misses (0 Critical)
-                </div>
-                <div class="text-xs text-slate-600 mb-3 flex items-center gap-1">
-                    <span class="text-emerald-700 font-bold">Policy Verdict:</span>
-                    <span id="gg-verdict-text">100% Deadlines Preserved Safe</span>
-                </div>
-
-                <div class="grid grid-cols-2 gap-2 my-2">
-                    <div class="bg-white border border-emerald-200 rounded-xl p-3 shadow-xs">
-                        <div class="text-[10px] text-slate-500 mono uppercase font-bold">Worst-Case Response Time</div>
-                        <div id="stat-gg-wcrt" class="text-lg font-extrabold text-emerald-700 mono mt-0.5">0.0 ms</div>
-                        <div class="text-[10px] text-emerald-600 mono font-semibold" id="gg-slack-text">Slack: Nominal</div>
-                    </div>
-                    <div class="bg-white border border-emerald-200 rounded-xl p-3 shadow-xs">
-                        <div class="text-[10px] text-slate-500 mono uppercase font-bold">Fallback Activations</div>
-                        <div id="stat-gg-fallbacks" class="text-lg font-extrabold text-emerald-700 mono mt-0.5">0</div>
-                        <div class="text-[10px] text-slate-500 mono" id="gg-utility-text">INT8 Utility: 100%</div>
-                    </div>
-                </div>
-
-                <div class="space-y-1 text-xs text-slate-600 mt-3 pt-2.5 border-t border-emerald-100">
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">Offloads Dispatched:</span>
-                        <span id="stat-gg-offloads" class="font-bold mono text-slate-800">0</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">Tasks Completed Safely:</span>
-                        <span id="stat-gg-completed" class="font-bold mono text-emerald-700">0</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">DMR (%):</span>
-                        <span id="stat-gg-dmr" class="font-bold mono text-emerald-700">0.0%</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- KPI CARD 2: BASELINE EDF -->
-            <div class="clean-card p-5 border-2 border-rose-400/80 bg-gradient-to-br from-rose-50/40 via-white to-white relative overflow-hidden shadow-sm">
-                <div class="flex justify-between items-center mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-rose-500"></span>
-                        <h3 class="font-extrabold text-rose-800 text-xs tracking-wider uppercase mono">
-                            BASELINE: EARLIEST DEADLINE FIRST
-                        </h3>
-                    </div>
-                    <span id="stat-edf-badge" class="px-2 py-0.5 rounded text-[10px] font-bold mono bg-rose-100 text-rose-800 border border-rose-300">
-                        CONTINUOUS
-                    </span>
-                </div>
-
-                <div id="stat-edf-misses" class="text-2xl sm:text-3xl font-extrabold mono text-rose-700 mt-1 mb-0.5">
-                    0 Deadline Misses (0 Critical)
-                </div>
-                <div class="text-xs text-slate-600 mb-3 flex items-center gap-1">
-                    <span class="text-rose-700 font-bold">Policy Verdict:</span>
-                    <span id="edf-verdict-text">Reactive Queue Overload</span>
-                </div>
-
-                <div class="grid grid-cols-2 gap-2 my-2">
-                    <div class="bg-white border border-rose-200 rounded-xl p-3 shadow-xs">
-                        <div class="text-[10px] text-slate-500 mono uppercase font-bold">Worst-Case Response Time</div>
-                        <div id="stat-edf-wcrt" class="text-lg font-extrabold text-rose-700 mono mt-0.5">0.0 ms</div>
-                        <div class="text-[10px] text-rose-600 mono font-semibold" id="edf-slack-text">Slack: Nominal</div>
-                    </div>
-                    <div class="bg-white border border-rose-200 rounded-xl p-3 shadow-xs">
-                        <div class="text-[10px] text-slate-500 mono uppercase font-bold">Fallback Activations</div>
-                        <div id="stat-edf-fallbacks" class="text-lg font-extrabold text-slate-500 mono mt-0.5">0</div>
-                        <div class="text-[10px] text-slate-500 mono">No proactive degraded mode</div>
-                    </div>
-                </div>
-
-                <div class="space-y-1 text-xs text-slate-600 mt-3 pt-2.5 border-t border-rose-100">
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">Offloads Dispatched:</span>
-                        <span id="stat-edf-offloads" class="font-bold mono text-slate-800">0 (Local-only)</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">Tasks Completed:</span>
-                        <span id="stat-edf-completed" class="font-bold mono text-slate-800">0</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-slate-500">DMR (%):</span>
-                        <span id="stat-edf-dmr" class="font-bold mono text-rose-700">0.0%</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LIVE ROLLING PERFORMANCE CHART (Plotly Light) -->
-            <div class="clean-card p-4 bg-white border border-slate-200">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="font-extrabold text-xs uppercase tracking-wider text-slate-800 mono">
-                        Live WCRT & Fleet Load Timeline
-                    </h3>
-                    <span class="text-[10px] font-bold mono text-slate-400">Rolling Window</span>
-                </div>
-                <div id="live-chart-container" class="w-full h-56 bg-slate-50/50 rounded-xl overflow-hidden"></div>
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- SCRIPT INCLUDES -->
-    <script src="/static/node_icons.js"></script>
-    <script src="/static/app.js"></script>
+      <footer class="site-footer"><span>PredictiveRuntime / Research Console</span><span>Simulated outcomes · Explicit assumptions · Canonical events</span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

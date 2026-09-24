@@ -1,803 +1,410 @@
-# GhostGuard Research Dashboard — UI Design Specification and Template
-
-**Product type:** Interactive research simulator, run inspector, and evidence browser  
-**Audience:** Research team, course evaluator, paper reviewer, and technical demo audience  
-**Implementation target:** The existing FastAPI backend and web frontend, upgraded to consume canonical run/event APIs  
-**Related document:** `Implementation Plan.md`
-
-## 1. Product Direction
-
-The interface should feel like a precise scientific instrument: calm, legible, inspectable, and honest about evidence. Its purpose is not merely to show that GhostGuard “wins.” It must help a reviewer understand what happened, why the policy chose an action, which assumptions apply, and where uncertainty remains.
-
-### UX goals
-
-- Configure and run a reproducible scenario without editing code.
-- Explain one critical task’s journey from release to local/offload/fallback decision.
-- Compare policies using identical scenario seeds and aligned timelines.
-- Inspect model quality, inference overhead, and federated estimator freshness.
-- Inspect the exact schedulability certificate and assumptions.
-- Export a run or figure with its provenance intact.
-
-### Non-goals
-
-- A production fleet-control console.
-- A visual claim of physical-system safety.
-- Decorative animation that obscures timestamps or changes data meaning.
-- Showing only the best run or hiding misses and failed interventions.
-
-## 2. Evidence Language
-
-Every major value must carry one of four evidence types. This is a core UI rule.
-
-| Badge | Meaning | Example |
-|---|---|---|
-| `SIMULATED` | Produced by the discrete-event model | CPU load, task completion time, deadline miss |
-| `PREDICTED` | Output of a learned or heuristic model | miss probability, q95 remote latency |
-| `MEASURED` | Timed on the named host during this run/build | GNN inference latency |
-| `ANALYTICAL` | Computed from a formal analysis under assumptions | RTA WCRT and margin |
-
-Never label a scripted showcase value “measured.” Never use “guaranteed safe” alone. Preferred copy:
-
-- “Schedulable under certificate assumptions”
-- “No critical misses observed in 30 simulated seeds”
-- “Offload predicted feasible with 4.2 ms conservative margin”
-- “Not verified: configured overhead exceeds analyzed bound”
+# Alejandro Mejias — Style Reference
+> Acid-lit brutalist atelier, acid yellow against obsidian and bone white
+
+**Theme:** mixed
+
+Source measurements are normalized; roles and recommendations are interpreted. Font summary lists are independent, not paired by position. HTML examples are reconstructions, not source components.
+
+Alejandro Mejias operates as a brutalist editorial portfolio: near-total monochrome canvases (white and deep black sections alternate) are interrupted by a single electric lime accent (#ebff00) that only appears on contact actions, time stamps, and avatar CTAs. Typography is the identity — a custom wide-compact grotesque (FK Raster Grotesk) at 32–48px carries every section heading, while IBM Plex Mono at 10–18px with aggressive positive tracking handles every label, tag, and metadata string. The signature element is a glossy 3D-rendered abstract 'A' sculpture that anchors major sections like a sculptural logo-mascot. Layout is edge-to-edge with very tight gutters, a fixed three-zone top bar (left brand, center nav, right status pill), and floating corner CTAs. Components feel architectural: sharp 4px button corners, soft 24px image corners, and occasional oversized pill radii up to 84px create deliberate contrast. The overall atmosphere is a high-design atelier's workshop log — restrained, opinionated, and unapologetically loud where it matters.
+
+## Tokens — Colors
+
+| Name | Value | Token | Role |
+|------|-------|-------|------|
+| Acid Lime | `#ebff00` | `--color-acid-lime` | Green action color for filled buttons, selected navigation states, and focused conversion moments |
+| Obsidian | `#080707` | `--color-obsidian` | Body and heading text, dominant border color, dark section canvas — near-pure black for maximum contrast |
+| Pure Black | `#000000` | `--color-pure-black` | High-frequency borders, icons, decorative strokes, image outlines — the structural black that outlines every other element |
+| Bone White | `#ffffff` | `--color-bone-white` | Light section canvas, card surfaces, inverted text on dark sections and lime buttons |
+| Fog | `#c8c8c8` | `--color-fog` | Placeholder surfaces, muted image backgrounds, subtle borders, disabled state fills |
+| Slate | `#383838` | `--color-slate` | Secondary dark surfaces, dark mode card backgrounds, subdued text on dark canvases |
+
+## Tokens — Typography
+
+### FK Raster Grotesk Compact Trial Sharp — Display headlines for section titles (e.g. 'FEATURED WORK'). The wide, compact, near-square grotesque proportions at 32–48px with 1.0 line-height and +0.042em tracking are the site's signature — every section is announced with this single cut, no fallback weights exist · `--font-fk-raster-grotesk-compact-trial-sharp`
+- **Substitute:** Druk Wide, Antonio, Tungsten Bold (all require commercial license); free alternative: Archivo Black at 90% width transform
+- **Weights:** 400
+- **Sizes:** 32px, 48px
+- **Line height:** 1.00
+- **Letter spacing:** 0.042em
+- **Role:** Display headlines for section titles (e.g. 'FEATURED WORK'). The wide, compact, near-square grotesque proportions at 32–48px with 1.0 line-height and +0.042em tracking are the site's signature — every section is announced with this single cut, no fallback weights exist
+
+### IBM Plex Mono — All uppercase labels, metadata tags, navigation items, technical strings, section indices like '014 — TODAY' and '[GOOD DESIGN AWARD WINNER 2023/24]'. The 0.086em–0.109em positive tracking on the 10–11px sizes is the monospace's defining behavior — tiny, widely-spaced, all-caps annotations that read like typeset engineering labels · `--font-ibm-plex-mono`
+- **Substitute:** JetBrains Mono, Space Mono, IBM Plex Mono (Google)
+- **Weights:** 500, 600
+- **Sizes:** 10px, 11px, 14px, 18px
+- **Line height:** 1.00–1.40
+- **Letter spacing:** -0.05em, 0.086em, 0.109em
+- **Role:** All uppercase labels, metadata tags, navigation items, technical strings, section indices like '014 — TODAY' and '[GOOD DESIGN AWARD WINNER 2023/24]'. The 0.086em–0.109em positive tracking on the 10–11px sizes is the monospace's defining behavior — tiny, widely-spaced, all-caps annotations that read like typeset engineering labels
 
-## 3. Information Architecture
-
-Use a persistent application shell with four primary workspaces:
-
-1. **Live Run** — build a scenario, start a run, replay events, and inspect decisions.
-2. **Compare** — compare policies or experiment aggregates with uncertainty.
-3. **Models** — view GNN validation/calibration/latency and federated model rounds.
-4. **Verification** — view timing certificates, assumptions, per-task RTA iterations, and export artifacts.
-
-Secondary destinations:
-
-- Runs archive
-- Scenario presets
-- Artifact/provenance browser
-- Methods/help
+### Be Vietnam Pro — Long-form body copy and link text. Stays at 16px only — the design avoids type-size variation in body text, relying on monospace labels for hierarchy instead · `--font-be-vietnam-pro`
+- **Substitute:** Inter, system-ui, sans-serif
+- **Weights:** 400
+- **Sizes:** 16px
+- **Line height:** 1.40
+- **Role:** Long-form body copy and link text. Stays at 16px only — the design avoids type-size variation in body text, relying on monospace labels for hierarchy instead
 
-### Global shell
+### Inter Medium — Button text — the one place a humanist sans is used at 500 weight with slight negative tracking for legibility in small pill CTAs · `--font-inter-medium`
+- **Substitute:** Inter, system-ui
+- **Weights:** 500
+- **Sizes:** 16px
+- **Line height:** 1.20
+- **Letter spacing:** -0.012em
+- **Role:** Button text — the one place a humanist sans is used at 500 weight with slight negative tracking for legibility in small pill CTAs
 
-```text
-+------------------------------------------------------------------------------------------------+
-| GhostGuard / Research Console          Run: GG-20260920-0042  [SIMULATED]  API ●  Theme  Help   |
-+----------------------+-------------------------------------------------------------------------+
-| Live Run             |                                                                         |
-| Compare              |                         active workspace                                |
-| Models               |                                                                         |
-| Verification         |                                                                         |
-| -------------------- |                                                                         |
-| Runs                 |                                                                         |
-| Scenarios            |                                                                         |
-| Artifacts            |                                                                         |
-| Methods              |                                                                         |
-+----------------------+-------------------------------------------------------------------------+
-| Code rev 8ac… | Scenario 91f… | Model gnn-1.2.0 | Seed 301 | Units: ms | Reproducible ✓       |
-+------------------------------------------------------------------------------------------------+
-```
+### system sans-serif — Icon-adjacent micro-text and fallback rendering for system UI · `--font-system-sans-serif`
+- **Substitute:** system-ui
+- **Weights:** 400
+- **Sizes:** 12px
+- **Line height:** 1.20
+- **Role:** Icon-adjacent micro-text and fallback rendering for system UI
 
-Desktop uses a 224 px collapsible sidebar. Tablet collapses it to icons. Mobile uses a bottom navigation bar for the four primary workspaces and a “More” sheet for secondary destinations.
+### Type Scale
 
-## 4. Live Run Workspace
+| Role | Family | Weight | Size | Line Height | Letter Spacing | Token |
+|------|--------|--------|------|-------------|----------------|-------|
+| caption | — | — | 10px | 1 | 0.86px | `--text-caption` |
+| body | — | — | 16px | 1.4 | 0px | `--text-body` |
+| subheading | — | — | 18px | 1.4 | -0.9px | `--text-subheading` |
+| heading-sm | — | — | 32px | 1 | 1.344px | `--text-heading-sm` |
+| heading | — | — | 48px | 1 | 2.016px | `--text-heading` |
 
-### 4.1 Layout
+## Tokens — Spacing & Shapes
 
-```text
-+------------------------------------------------------------------------------------------------+
-| Scenario: Correlated Peer Shock     Policy pair: GhostGuard vs EDF      [Run experiment]       |
-| Seed 301 • 100 ms • 6 nodes • config 91f…                    [Save preset] [More actions ▾]     |
-+----------------------------+-------------------------------------------------------------------+
-| SCENARIO BUILDER           | KPI STRIP                                                         |
-|                            | Critical DMR | p99 RT | On-time utility | GNN p95 | Offload success |
-| Workload                   +-------------------------------------------------------------------+
-| Fleet & topology           | MESH / PIPELINE toggle                            Legend / Layers  |
-| Faults                     |                                                                   |
-| Network                    |                    interactive topology                             |
-| Policy                     |                                                                   |
-| Advanced                   +-------------------------------------------------------------------+
-|                            | EVENT TIMELINE + GANTT                                             |
-| Validation ✓               | [|<] [<] [Play] [>]  1x   t=49.500 ms    [============o=========]  |
-|                            +------------------------------------------------+------------------+
-| [Reset] [Run]             | DECISION INSPECTOR                             | NODE/TASK DETAIL |
-+----------------------------+------------------------------------------------+------------------+
-```
+**Density:** compact
 
-At widths below 1100 px, the scenario builder becomes a left drawer and the inspector/detail panels stack below the timeline.
+### Spacing Scale
 
-### 4.2 Scenario builder
+| Name | Value | Token |
+|------|-------|-------|
+| 4 | 4px | `--spacing-4` |
+| 8 | 8px | `--spacing-8` |
+| 10 | 10px | `--spacing-10` |
+| 16 | 16px | `--spacing-16` |
+| 20 | 20px | `--spacing-20` |
+| 24 | 24px | `--spacing-24` |
+| 48 | 48px | `--spacing-48` |
+| 80 | 80px | `--spacing-80` |
+| 100 | 100px | `--spacing-100` |
 
-Use grouped sections with a compact summary when collapsed.
+### Border Radius
 
-**Workload**
+| Element | Value |
+|---------|-------|
+| tags | 4px |
+| cards | 24px |
+| pills | 72-84px |
+| images | 24px |
+| buttons | 4px |
+| special | 30-40px |
 
-- Pipeline preset
-- Release model: periodic/sporadic
-- Duration, warm-up, drain
-- Stage table: period, deadline, WCET, criticality, resource, exit profile
-- DAG preview with validation for cycles and unreachable sinks
+### Layout
 
-**Fleet & topology**
+- **Section gap:** 48px
+- **Card padding:** 16px
+- **Element gap:** 10px
 
-- Fleet size
-- Device profile per node
-- Link editor or topology preset
-- CPU/GPU concurrency and scheduler
+## Components
 
-**Faults**
+### Top Bar
+**Role:** Persistent three-zone navigation header
 
-- Add one or more faults as rows/cards
-- Target, resource/link, onset, duration, severity, shape, correlation group
-- Timeline preview displaying overlaps
+Full-width strip with three flex-aligned zones: left brand label '[ALEJANDRO MEJIAS]' in 10px IBM Plex Mono 600 uppercase with 0.109em tracking, center nav links ('WORK ⊙', 'ABOUT', 'REACH OUT') at 11px IBM Plex Mono 500, right status pill (see Time Badge). Fixed/sticky behavior. No background fill — transparent over white or black canvas. 48px vertical padding.
 
-**Network**
+### Time Status Badge
+**Role:** Live local-time indicator pill
 
-- Bandwidth/base latency
-- Jitter distribution and parameters
-- Loss and retry policy
+Acid Lime (#ebff00) filled pill containing live time like 'MEL(AU) 4:33 PM' at 11px IBM Plex Mono 600 uppercase. Pill radius 72–84px. 4px vertical / 8px horizontal padding. Sits in the top-right zone. Functions as a self-aware status indicator — the only place lime appears in the header.
 
-**Policy**
+### Book a Call Floating CTA
+**Role:** Persistent contact action
 
-- Primary and comparison policies
-- Predictor/model version
-- Risk threshold
-- reliability threshold
-- safety margin
-- watchdog policy
+Acid Lime (#ebff00) filled pill with circular avatar image (24px) on the left, 'BOOK A CALL' label in 11px IBM Plex Mono 600 uppercase, and an arrow '↗' icon. 4px vertical / 16px horizontal padding. Border-radius 84px. Fixed to the bottom-right corner. Inverts to dark-mode compatible when over black sections.
 
-**Advanced**
+### Section Display Heading
+**Role:** Page-level section title
 
-- Seed or seed set
-- instrumentation resolution
-- named RNG stream recording
-- experiment note
+FK Raster Grotesk Compact Trial Sharp, 48px (or 32px for sub-sections), weight 400, line-height 1.00, letter-spacing 0.042em. Always uppercase. All-caps presentation in a wide-compact grotesque is the signature. No color override needed — uses Obsidian (#080707) on light and Bone White (#ffffff) on dark.
 
-Validation is live and specific. Example: “Fault ends at 130 ms, beyond the 100 ms run; it will be truncated.” Hard errors disable Run; warnings do not.
+### Metadata Tag (Bracketed)
+**Role:** Categorical / contextual label
 
-### 4.3 Run states
+10–11px IBM Plex Mono 600 uppercase, letter-spacing 0.086–0.109em, wrapped in square brackets like '[GOOD DESIGN AWARD WINNER 2023/24]' or '[FRONTROW] [2025]'. Obsidian text on light, Bone White on dark. The square-bracket punctuation is part of the system — they read like archival catalog codes.
 
-- **Draft:** controls enabled; no output panels show stale values without a “previous run” label.
-- **Validating:** inline progress, usually under 300 ms.
-- **Queued:** run ID assigned; cancellation available.
-- **Running:** progress by simulated time and completed policy/seed count; controls locked except safe cancel.
-- **Completed:** all panels bound to immutable run ID.
-- **Partial:** some policies/seeds failed; successful data remain visible and failures are prominent.
-- **Failed:** error summary, expandable technical details, retry with same config, download log.
-- **Cancelled:** clearly distinguished from failed.
+### Project Card (Image)
+**Role:** Portfolio work entry
 
-Do not use a spinner as the only status. Always show text and, for long experiment matrices, completed/total units.
+Large rectangular image (full column width), 24px border-radius, Obsidian (#000000) 1px border or no border. Above the image: project name in 14px IBM Plex Mono 500 left-aligned + year in same style right-aligned (e.g. 'FINGERTIP.COM' / '2024'). Below: optional metadata. No card background — image sits directly on canvas.
 
-### 4.4 KPI strip
+### Video Watch Card
+**Role:** Embedded video preview thumbnail
 
-Show five compact metrics. Each card includes label, value, unit, evidence badge, comparison delta, and sample size.
+Small card (~180px wide) with 4px border-radius, 1px Obsidian border, containing a square photo thumbnail and a bottom strip with 'FRONTROW [2025]' label and '[WATCH] ↗' action in 10–11px IBM Plex Mono 500. Lives in the hero zone as a self-contained unit.
 
-Recommended default KPIs:
+### Contact Row
+**Role:** Structured contact entry (video call / email / connect)
 
-- Critical DMR
-- p99 response time
-- On-time normalized utility
-- Predictor p95 overhead
-- Timely offload success rate
+Two-column row on dark canvas. Left: label in 11px IBM Plex Mono 600 uppercase ('VIDEO CALL', 'EMAIL', 'CONNECT') in Bone White. Right: corresponding value — acid-lime CTA pill for call, outlined 4px-radius input-style button containing the email for email, horizontal row of social links for connect. 48px row gap between rows. 1px hairline divider between rows.
 
-Example:
+### Outlined Action Button
+**Role:** Secondary contact / display action
 
-```text
-CRITICAL DMR          1.7%       ↓ 4.2 pp vs EDF
-SIMULATED             95% CI [0.9, 2.8] • n=30 seeds
-```
+Transparent background, 1px Obsidian (#080707) or Bone White border (on dark), 4px border-radius, contains a value string in 11px IBM Plex Mono 600 uppercase plus a small copy icon. 4px vertical / 16px horizontal padding. Used for email display, secondary actions.
 
-Avoid green-only “wins.” Pair color with arrows, labels, and confidence intervals. If only one deterministic run is selected, replace CI text with “single seed; no uncertainty estimate.”
+### Social Link
+**Role:** External platform entry
 
-### 4.5 Mesh visualization
+Icon (16–20px) + platform name in 11px IBM Plex Mono 600 uppercase with 0.086em tracking. Bone White on dark, Obsidian on light. Inline horizontal row. No underlines, no hover effects beyond opacity.
 
-The mesh is for topology and current state, not precise trend reading.
+### 3D Sculpture Element
+**Role:** Brand-defining decorative anchor
 
-Node anatomy:
+A glossy 3D-rendered abstract 'A' letterform in Pure Black with subtle highlight gradients (reads as obsidian glass). Centered in major sections at ~280–340px width. Functions as the site mascot/logo in 3D form. No background — floats on the section canvas. Renders as the only non-flat element in the system.
 
-- outer ring: state (`nominal`, `contended`, `throttled`, `fallback`, `unreachable`)
-- center glyph: device type
-- two small bars: CPU and GPU utilization
-- badge: queue length
-- label: stable short node name
-- selection halo: high-contrast outline independent of state color
+### Corner Tab (W. Honors)
+**Role:** Edge-attached utility label
 
-Link anatomy:
+Vertical text strip attached to the right edge of the viewport. 11px IBM Plex Mono 600, 0.086em tracking, rotated 90°. Functions as a secondary nav hint (e.g. 'W. Honors'). 1px Obsidian left border.
 
-- thickness: configured bandwidth bucket
-- dash pattern: degraded or unavailable
-- moving packet marker only while a real transmission event is active
-- arrow: direction
-- label on selection: q50/q95 latency and loss
+### Scroll Indicator
+**Role:** Hero exit affordance
 
-Optional layers:
+Centered at the bottom of the hero: 'SCROLL ↓' in 10–11px IBM Plex Mono 600 uppercase with 0.109em tracking. Obsidian text, no background. Tells the user the page is vertical and scrollable.
 
-- Resource load
-- Task placement
-- Offload traffic
-- Prediction risk
-- Fault overlay
+## Do's and Don'ts
 
-Only one dense overlay should be active by default. Provide a textual topology table for accessibility and precise values.
+### Do
+- Use IBM Plex Mono 500–600 at 10–11px with 0.086–0.109em positive tracking for every label, tag, and metadata string — uppercase by default
+- Reserve FK Raster Grotesk Compact Trial Sharp at 32–48px / line-height 1.0 for section titles only — never use it for body or subheadings
+- Use Acid Lime (#ebff00) exclusively on time badges, the 'Book a Call' CTA, and avatar pills — never as a background fill for large sections
+- Apply 4px border-radius to all buttons, tags, and outlined actions; 24px radius to all images; 72–84px radius only to pill-shaped elements
+- Maintain a three-zone top bar layout (left brand / center nav / right status pill) on every page
+- Pair Obsidian text on Bone White for light sections and Bone White text on Obsidian for dark sections — never mix
+- Use 48px vertical padding as the standard section separator rhythm
 
-### 4.6 Pipeline view
+### Don't
+- Do not introduce additional chromatic colors — the lime is the ONLY accent in the system and adding others breaks the discipline
+- Do not use soft shadows, blurs, or gradient backgrounds on any UI element — the system is intentionally flat except for the 3D sculpture
+- Do not use 16px+ border-radius on buttons or tags — they must read as sharp/precise (4px)
+- Do not set body type above 18px — the design uses size contrast between 11px labels and 48px displays, not intermediate steps
+- Do not place body copy centered — all body and labels are left-aligned, with only display headings occasionally centered
+- Do not use border-radius below 4px or use perfectly square corners — 4px is the minimum precision radius
+- Do not stack more than two text weights in a single component — the system relies on monospace + display grotesque only
 
-Toggle from Mesh to Pipeline. Display the DAG left-to-right with stage status and current attempt location. A stage card shows:
+## Surfaces
 
-- task name and criticality
-- absolute deadline
-- remaining work estimate
-- slack/bound margin
-- local/remote attempt state
-- selected exit point and utility, if any
+| Level | Name | Value | Purpose |
+|-------|------|-------|---------|
+| 0 | Bone Canvas | `#ffffff` | Default light section background, hero, project galleries |
+| 1 | Acid Highlight | `#ebff00` | Time badge, contact CTA, occasional section accent |
+| 2 | Fog Plate | `#c8c8c8` | Image placeholders, product mockup backgrounds, neutral cards |
+| 3 | Slate Card | `#383838` | Elevated dark surface inside dark sections |
+| 4 | Obsidian Ground | `#080707` | Dark contact/footer section, near-black canvas |
 
-Blocked stages are visually quiet. Ready/running/late states use icon plus label, not color alone.
+## Elevation
 
-### 4.7 Timeline and Gantt
+- **Floating CTA (Book a Call):** `0 4px 12px rgba(0,0,0,0.15)`
+- **Video Watch Card:** `0 2px 8px rgba(0,0,0,0.08)`
 
-Use a single synchronized time domain for topology, task Gantt, resource trends, and event cursor.
+## Imagery
 
-Tracks:
+The visual language is 99% flat monochrome UI punctuated by one signature 3D rendered element: a glossy black abstract 'A' letterform sculpture that appears as a hero anchor and section mascot. Project imagery is presented as large rectangular product mockup screenshots on neutral Fog (#c8c8c8) backgrounds within 24px-radius frames — no lifestyle photography, no environmental context. A small embedded video thumbnail card uses a candid portrait photo. Imagery is always contained (never full-bleed decorative), always sharp-edged or softly rounded at 24px, and always monochrome or desaturated. Icons are mono-stroke monochrome in 1.5–2px weight, paired with monospace labels. The role of imagery is showcase and identification, not decoration — the design IS the decoration.
 
-- Faults and link state
-- GhostGuard task attempts by node/resource
-- Comparison-policy attempts
-- Network request/result/cancel transmissions
-- Predictor/decision overhead
-- Deadlines and commits
+## Layout
 
-Visual encodings:
+Full-bleed edge-to-edge layout with no centered max-width container. Top bar spans 100% width with three flex zones: brand label top-left, nav center, status pill top-right. The hero is a wide left-right split: descriptive text block on the left, metadata credits top-right, and the 3D 'A' sculpture dominating the center. Below the fold, project galleries use a 2-column image grid with full-bleed edges. Contact section flips to a dark Obsidian canvas maintaining the same edge-to-edge treatment. Navigation is a single sticky top bar — no sidebar, no mega-menu, no breadcrumbs. Section transitions are immediate (no gradients, no fades) — the only section break mechanism is the canvas flip from white to black. Spacing is compact: 48px between major sections, 10px between text rows, 4–16px component padding. Floating corner elements (Book a Call pill bottom-right, Honors tab right edge) layer over the layout as fixed UI chrome.
 
-- solid bar: running
-- hatched bar: queued/waiting
-- dotted bar: transmission
-- purple outline: degraded/early-exit attempt
-- diagonal strike: cancelled attempt
-- red deadline marker: missed
-- black/white diamond: committed result
+## Agent Prompt Guide
 
-Interactions:
+## Quick Color Reference
+- text: #080707 (light bg) / #ffffff (dark bg)
+- background: #ffffff (light) / #080707 (dark)
+- border: #000000 (primary) / #c8c8c8 (subtle)
+- accent: #ebff00 (Acid Lime — CTAs, status badges only)
+- muted surface: #c8c8c8 (Fog — placeholders, image bg)
+- primary action: #ebff00 (filled action)
 
-- Play/pause; step to previous/next event; speed 0.25x–8x.
-- Arrow keys step events; Shift+Arrow steps fixed time; Space toggles playback.
-- Drag or click scrubber.
-- Click a task attempt to lock selection across all panels.
-- Zoom and pan; double-click restores full range.
-- “Follow selected task” keeps its next event centered.
-- Milestone chips are generated from event types, not fixed timestamps.
+## Example Component Prompts
 
-The cursor tooltip shows exact simulation time and the ordered events at that timestamp.
+1. **Section Display Heading**: 48px FK Raster Grotesk Compact Trial Sharp (or Druk Wide / Antonio fallback), weight 400, line-height 1.00, letter-spacing 0.042em, uppercase, color #080707. Example output: 'FEATURED WORK'.
 
-### 4.8 Decision inspector
+2. **Time Status Badge**: Acid Lime (#ebff00) filled pill, border-radius 84px, 4px vertical / 8px horizontal padding, containing 'MEL(AU) 4:33 PM' in 11px IBM Plex Mono weight 600 uppercase with 0.086em letter-spacing, color #080707.
 
-This is the most important explanatory panel. For the selected decision, show:
+3. **Book a Call Floating CTA**: Acid Lime (#ebff00) filled pill, border-radius 84px, 4px vertical / 16px horizontal padding, with a 24px circular avatar on the left, 'BOOK A CALL ↗' in 11px IBM Plex Mono 600 uppercase 0.086em tracking, color #080707. Fixed bottom-right.
 
-```text
-Decision D-00418 • t=33.125 ms • Perception job P-17
+4. **Metadata Bracket Tag**: 10–11px IBM Plex Mono weight 600 uppercase, letter-spacing 0.109em, color #080707, wrapped in literal square brackets. Example: '[GOOD DESIGN AWARD WINNER 2023/24]'. No background, no border.
 
-Prediction [PREDICTED]
-Miss probability       0.82   threshold 0.61
-Time to violation      14.6 ms
-Top cause              GPU contention (0.71)
-Model                   gnn-1.2.0 calibrated
-Inference               0.24 ms [MEASURED on Ryzen …]
+5. **Project Image Card**: Full-column-width image with 24px border-radius, 1px #000000 border, no card background. Above image: project name left-aligned + year right-aligned, both 14px IBM Plex Mono 500. Sits on Bone White (#ffffff) canvas.
 
-Candidate bounds
-Action       Finish bound   Margin   Reliability   Result
-Local full     41.2 ms      -8.1      —            Rejected
-Node 2 q95     27.4 ms      +5.7      0.94         Selected
-Node 3 q95     31.9 ms      +1.2      0.81         Feasible
-Exit E2        29.3 ms      +3.8      —            Feasible
+6. **Outlined Action Button**: Transparent fill, 1px #080707 border (or #ffffff on dark), border-radius 4px, 4px vertical / 16px horizontal padding, label in 11px IBM Plex Mono 600 uppercase 0.086em tracking. Used for secondary actions and email display.
 
-Reason
-Selected Node 2: highest utility among actions satisfying the conservative bound.
-```
+## Signature System Rules
 
-All values link to a glossary/formula popover. Rejected options remain visible; this prevents the interface from presenting a decision without alternatives.
+1. The site runs on exactly ONE chromatic color (Acid Lime #ebff00). Introducing a second chromatic voice breaks the visual contract.
 
-### 4.9 Node/task detail
+2. Typography is a two-family system: a custom wide-compact grotesque (FK Raster Grotesk) for displays and IBM Plex Mono for everything else. A humanist sans (Be Vietnam Pro) only appears in long-form body.
 
-Tabbed details:
+3. Every label and tag uses square-bracket notation ('[FRONTROW] [2025]') to read as archival catalog codes rather than UI labels.
 
-- **State:** CPU/GPU, temperature, queues, active tasks.
-- **Task:** release/deadline, predecessors, attempts, service received, utility.
-- **Network:** current links and transmissions.
-- **Events:** filtered canonical event list with JSON drawer.
+4. Radii follow a strict 3-tier hierarchy: 4px (precise UI), 24px (images), 72–84px (pills). No intermediate values like 8px or 12px are used.
 
-Use small line charts only for time series; never show a gauge when a number plus threshold is clearer.
+5. The 3D 'A' sculpture functions as a recurring brand mark — it should appear centered in at least one major section per page to maintain brand presence.
 
-## 5. Compare Workspace
+## Similar Brands
 
-### 5.1 Purpose
+- **Locomotive (locomotive.ca)** — Same editorial monochrome portfolio language with a single accent color, tight grid, and large display grotesque headings
+- **Rauno Freiberg (raunofreiberg.com)** — Same monospace metadata + large compressed display type combo, monochrome canvas with single vivid accent, edge-to-edge layout
+- **Pentagram partners (pentagram.com)** — Same brutalist editorial aesthetic with sharp 4px buttons, bracketed metadata, and a persistent top bar treatment
+- **Werkstätte-Haberzeth** — Same monospace-label + display-grotesque contrast, acid accent against monochrome, 3D sculptural logo mark as section anchor
 
-Support honest policy comparison across repeated seeds and scenario families, not just a side-by-side hero card.
+## Quick Start
 
-### 5.2 Controls
+### CSS Custom Properties
 
-- Select experiment or compatible run set.
-- Choose policies, scenario facets, seed subset, metric, and aggregation.
-- Toggle absolute value / paired delta.
-- Toggle mean + CI / median + IQR / empirical CDF.
-- Filter criticality and task/pipeline type.
+```css
+:root {
+  /* Colors */
+  --color-acid-lime: #ebff00;
+  --color-obsidian: #080707;
+  --color-pure-black: #000000;
+  --color-bone-white: #ffffff;
+  --color-fog: #c8c8c8;
+  --color-slate: #383838;
 
-### 5.3 Default visual set
+  /* Typography — Font Families */
+  --font-fk-raster-grotesk-compact-trial-sharp: 'FK Raster Grotesk Compact Trial Sharp', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-ibm-plex-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-be-vietnam-pro: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-inter-medium: 'Inter Medium', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-system-sans-serif: 'system sans-serif', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-1. **Critical DMR dot-and-whisker plot** — point estimate and 95% CI by policy.
-2. **Paired seed slope plot** — GhostGuard versus strongest baseline; exposes run-to-run variance.
-3. **Response-time ECDF** — empirical data only, with deadline markers.
-4. **Utility vs DMR Pareto plot** — reveals aggressive fallback trade-offs.
-5. **Mechanism table** — offloads, cancellations, fallbacks, overhead, bytes.
+  /* Typography — Scale */
+  --text-caption: 10px;
+  --leading-caption: 1;
+  --tracking-caption: 0.86px;
+  --text-body: 16px;
+  --leading-body: 1.4;
+  --tracking-body: 0px;
+  --text-subheading: 18px;
+  --leading-subheading: 1.4;
+  --tracking-subheading: -0.9px;
+  --text-heading-sm: 32px;
+  --leading-heading-sm: 1;
+  --tracking-heading-sm: 1.344px;
+  --text-heading: 48px;
+  --leading-heading: 1;
+  --tracking-heading: 2.016px;
 
-Charts include `n`, units, scenario filters, aggregation method, and an “Export with provenance” action.
+  /* Typography — Weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
 
-### 5.4 Comparison table
+  /* Spacing */
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-10: 10px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-48: 48px;
+  --spacing-80: 80px;
+  --spacing-100: 100px;
 
-Columns:
+  /* Layout */
+  --section-gap: 48px;
+  --card-padding: 16px;
+  --element-gap: 10px;
 
-- Policy
-- Critical DMR with CI
-- Total DMR with CI
-- p99 response time
-- On-time utility
-- Offload timely success
-- Fallback rate
-- Decision p99
-- Paired delta vs reference
+  /* Border Radius */
+  --radius-md: 4px;
+  --radius-2xl: 16px;
+  --radius-2xl-2: 20px;
+  --radius-3xl: 24px;
+  --radius-3xl-2: 30px;
+  --radius-3xl-3: 40px;
+  --radius-full: 50px;
+  --radius-full-2: 60px;
+  --radius-full-3: 72px;
+  --radius-full-4: 84px;
+  --radius-full-5: 94px;
+  --radius-full-6: 120px;
 
-Allow sorting but retain the selected reference. Use em dash for not applicable and “missing” for absent data; never coerce missing to zero.
+  /* Named Radii */
+  --radius-tags: 4px;
+  --radius-cards: 24px;
+  --radius-pills: 72-84px;
+  --radius-images: 24px;
+  --radius-buttons: 4px;
+  --radius-special: 30-40px;
 
-## 6. Models Workspace
-
-### 6.1 Predictor tab
-
-- Model card: version, architecture, parameters, feature schema, data manifest, training date.
-- Test metrics: AUROC, AUPRC, recall/precision at chosen threshold, Brier score, ECE, TTV MAE.
-- Reliability diagram with sample counts per bin.
-- Precision-recall curve with selected operating point.
-- Lead-time distribution, split into actionable/non-actionable predictions.
-- Inference latency distribution by graph size and host.
-- Confusion matrix and error browser linked to replayable runs.
-
-Clearly show whether the active policy used the GNN or heuristic fallback.
-
-### 6.2 Federated tab
-
-- Global model version, age, participating clients, sample counts.
-- Round-by-round q95 latency error and reliability calibration.
-- Client participation matrix.
-- Non-IID distribution summary by device profile.
-- Bytes and background compute per round.
-- Comparison: static, local-only, federated, pooled-data reference.
-
-Do not include a privacy shield icon unless the page also explains that raw traces are not centralized but FedAvg alone is not formal privacy.
-
-## 7. Verification Workspace
-
-### 7.1 Certificate summary
-
-```text
-Certificate FP-RTA-91f3…                         ANALYTICAL
-Status: SCHEDULABLE UNDER LISTED ASSUMPTIONS
-Configuration: 91f3…   Analyzer: rta-2.0   Generated: 2026-09-20 UTC
-Minimum margin: 3.4 ms on ObstacleDetection
-```
-
-Statuses:
-
-- `VERIFIED` — teal check, with conditional wording.
-- `NOT SCHEDULABLE` — red cross.
-- `INCONCLUSIVE` — amber question mark.
-- `STALE/MISMATCH` — gray broken-link icon; current configuration hash differs.
-
-### 7.2 Per-task analysis table
-
-Columns:
-
-- Task
-- Priority
-- `C`, `B`, `J`, `O`, `T`, `D`
-- Iterations to convergence
-- `R`
-- Margin `D-R`
-- Status
-
-Selecting a row opens its iteration trace and formula substitution. Provide a copy-ready LaTeX expression generated from the same certificate JSON.
-
-### 7.3 Assumptions panel
-
-Assumptions must be visible without opening a modal:
-
-- scheduler type and priority ordering
-- preemption points
-- WCET source
-- blocking model
-- context switch/predictor overhead bound
-- background task suspension
-- shared-resource assumptions
-- unsupported effects
-
-Changing scenario fields that affect the certificate marks it stale immediately.
-
-## 8. Runs and Artifact Browser
-
-### Runs table
-
-- Run ID
-- scenario and policy
-- seed
-- state
-- start/duration
-- config/model/code hashes
-- critical DMR
-- provenance health
-
-Filters are encoded in the URL. Selecting a run opens Live Run in immutable replay mode.
-
-### Artifact browser
-
-Group by experiment:
-
-- raw run manifests
-- aggregate dataset
-- statistics report
-- figures PNG/PDF
-- LaTeX tables
-- verification certificates
-- data/model cards
-
-Each artifact shows checksum, creation command, source run count, and download action. A red provenance warning appears if checksums or source references fail validation.
-
-## 9. Visual Design System
-
-### 9.1 Theme
-
-Use a restrained dark technical theme for interactive analysis and a light export theme for paper figures. Avoid glowing neon, animated pulse indicators for steady healthy states, and large marketing gradients.
-
-### 9.2 Color tokens
-
-Dark theme:
-
-| Token | Hex | Use |
-|---|---:|---|
-| `bg-canvas` | `#0B1020` | Application background |
-| `bg-surface` | `#121A2B` | Primary panels |
-| `bg-raised` | `#182338` | Raised controls/tooltips |
-| `border-subtle` | `#2B3953` | Dividers and panel borders |
-| `text-primary` | `#F4F7FB` | Main text |
-| `text-secondary` | `#AEBBD0` | Labels and secondary copy |
-| `accent` | `#5B8CFF` | Selection and primary action |
-| `positive` | `#31C48D` | Met/feasible; always with icon/text |
-| `warning` | `#F7B84B` | Risk/uncertainty |
-| `danger` | `#F26D6D` | Miss/failure |
-| `predicted` | `#A78BFA` | Predicted values |
-| `analytical` | `#2DD4BF` | Analytical certificates |
-| `measured` | `#38BDF8` | Host-measured values |
-| `simulated` | `#94A3B8` | Simulated values |
-
-Check text/background combinations against WCAG 2.2 AA. Color is never the only carrier of state.
-
-### 9.3 Typography
-
-- UI sans: Inter or Plus Jakarta Sans, system fallback.
-- Numeric/technical: JetBrains Mono or IBM Plex Mono.
-- Base size: 14 px desktop, 16 px form controls on mobile.
-- Numeric columns use tabular figures.
-- Limit uppercase to short tags and evidence badges.
-
-Type scale:
-
-- Page title: 24/32, 700
-- Section title: 18/26, 650
-- Card title: 14/20, 650
-- Body: 14/21, 400
-- Caption: 12/18, 450
-- KPI: 28/34, 700 mono/tabular
-
-### 9.4 Spacing and shape
-
-- 4 px base spacing grid: 4, 8, 12, 16, 24, 32.
-- Panel padding: 16 px compact, 20–24 px standard.
-- Radius: 6 px controls, 8 px panels, fully rounded only for small badges.
-- One-pixel borders; shadows reserved for overlays and selected floating panels.
-- Minimum pointer target: 44 x 44 px where space permits.
-
-### 9.5 Icons
-
-Use one consistent outline icon set. Required icons must have accessible labels. Do not use Unicode mojibake-prone symbols as control labels; use inline SVG plus text.
-
-## 10. Component Specifications
-
-### Evidence badge
-
-Props: `type`, `compact`, `tooltip`.  
-Displays icon, text, and type-specific border. Tooltip explains provenance and links to Methods.
-
-### Metric card
-
-Props: `label`, `value`, `unit`, `evidence`, `interval`, `delta`, `sampleSize`, `status`.  
-Empty state says “Not computed.” Loading preserves card size. Long units never wrap away from values.
-
-### Status pill
-
-Use for finite states only. Text examples: “Running 14/63,” “Partial: 2 failed,” “Certificate stale.” A colored dot alone is insufficient.
-
-### Data table
-
-- sticky header, keyboard sortable, visible sort direction
-- aligned numeric columns and explicit units in headers
-- column picker on dense research tables
-- virtualization above 200 rows
-- export respects active filters and includes provenance sidecar
-
-### Tooltip/popover
-
-Hover and keyboard focus both work. Tooltips contain brief definitions; interactive content belongs in a popover. Nothing essential is hover-only.
-
-### Toast and error banner
-
-Toasts confirm transient actions. Run failures and provenance problems use persistent banners with a next action.
-
-### Chart frame
-
-Every chart includes title, evidence/source, filters, `n`, legend, accessible summary, and export menu. Chart palettes remain distinguishable under common color-vision deficiencies and grayscale.
-
-## 11. Responsive Behavior
-
-### Desktop, 1280 px and above
-
-- Full sidebar.
-- Scenario builder plus visualization/inspector split.
-- Up to five KPI cards in one row.
-
-### Tablet, 768–1279 px
-
-- Collapsed sidebar.
-- Scenario builder in drawer.
-- Two-column KPI grid.
-- Inspector below visualization.
-
-### Mobile, below 768 px
-
-- Bottom navigation.
-- Scenario controls in full-screen sheet.
-- One KPI per horizontal snap card or two compact cards per row.
-- Mesh defaults to simplified mode; accessible node list appears first.
-- Timeline is horizontally scrollable with event-step controls pinned.
-- Large research tables use row cards plus “open full table” landscape view.
-
-No feature required to reproduce or inspect a run may be desktop-only.
-
-## 12. Accessibility Requirements
-
-- Meet WCAG 2.2 AA for contrast and interaction.
-- Logical heading structure and landmark regions.
-- Visible focus ring on every interactive element.
-- Complete keyboard operation for run controls, timeline stepping, tabs, dialogs, and tables.
-- Canvas/SVG mesh has an equivalent live-updated table and textual event summary.
-- `aria-live="polite"` for run progress; do not announce every playback frame.
-- Respect `prefers-reduced-motion`; disable packet animation and smooth auto-pan.
-- Do not rely on color, shape, or spatial position alone.
-- Chart exports include alt-text captions; the page includes a data table or downloadable CSV.
-- Form errors are linked to fields and summarized at the start of the form.
-
-## 13. Performance Budget
-
-- Initial shell JavaScript: target under 250 KB gzip excluding the chosen chart library.
-- First usable render: under 2 seconds on a typical laptop for cached/local API.
-- Playback: stable 60 fps for normal traces; degrade to 30 fps with sampling for very large traces.
-- Do not ship all events for long runs. Request time windows and aggregate server-side.
-- Virtualize event lists and tables.
-- Perform frame reduction in a Web Worker or on the server.
-- Pause animation when the tab is hidden.
-- Cache immutable run data by run ID and checksum.
-
-Plotly may be retained initially, but load it only on workspaces that need it. Use SVG/canvas deliberately: SVG for smaller semantic diagrams; canvas/WebGL for dense timelines.
-
-## 14. Frontend Data Model
-
-Use generated types from the OpenAPI schema where practical.
-
-```ts
-type EvidenceType = "simulated" | "predicted" | "measured" | "analytical";
-
-interface ValueWithEvidence<T> {
-  value: T;
-  unit?: "ms" | "us" | "percent" | "bytes" | "ratio";
-  evidence: EvidenceType;
-  sourceId: string;
-  method?: string;
-}
-
-interface RunSummary {
-  runId: string;
-  status: "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
-  progress: { completed: number; total: number; simulatedTimeUs?: number };
-  scenarioHash: string;
-  codeRevision: string;
-  modelVersions: Record<string, string>;
-  seeds: number[];
-  warnings: string[];
-}
-
-interface CanonicalEvent {
-  eventId: string;
-  timestampUs: number;
-  sequence: number;
-  type: string;
-  deviceId?: string;
-  jobId?: string;
-  taskId?: string;
-  attemptId?: string;
-  payload: Record<string, unknown>;
-}
-
-interface DecisionRecord {
-  decisionId: string;
-  timestampUs: number;
-  taskId: string;
-  prediction: {
-    missProbability: number;
-    ttvUs?: number;
-    causes: Record<string, number>;
-    modelVersion: string;
-    inferenceUs: number;
-  };
-  candidates: Array<{
-    action: "local" | "offload" | "exit";
-    targetId?: string;
-    exitPointId?: string;
-    finishBoundUs: number;
-    marginUs: number;
-    expectedUtility: number;
-    accepted: boolean;
-    rejectionReasons: string[];
-  }>;
-  selectedIndex: number;
+  /* Surfaces */
+  --surface-bone-canvas: #ffffff;
+  --surface-acid-highlight: #ebff00;
+  --surface-fog-plate: #c8c8c8;
+  --surface-slate-card: #383838;
+  --surface-obsidian-ground: #080707;
 }
 ```
 
-All time values use integer microseconds over the API. Format in milliseconds at the presentation boundary.
+### Tailwind v4
 
-## 15. API-to-UI Behavior
+```css
+@theme {
+  /* Colors */
+  --color-acid-lime: #ebff00;
+  --color-obsidian: #080707;
+  --color-pure-black: #000000;
+  --color-bone-white: #ffffff;
+  --color-fog: #c8c8c8;
+  --color-slate: #383838;
 
-- Create run returns immediately with `run_id`; poll status or use server-sent events/WebSocket for progress.
-- Replay requests accept time windows and event filters.
-- If WebSocket disconnects, show “Live updates paused” and continue retrying with backoff; immutable completed data remain usable.
-- URL contains workspace, run/experiment ID, selection, and time cursor so an exact view can be shared.
-- A run’s scenario and result cannot mutate after completion.
-- Changing scenario controls creates a draft derived from the run; it never rewrites the original.
+  /* Typography */
+  --font-fk-raster-grotesk-compact-trial-sharp: 'FK Raster Grotesk Compact Trial Sharp', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-ibm-plex-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-be-vietnam-pro: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-inter-medium: 'Inter Medium', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-system-sans-serif: 'system sans-serif', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-## 16. Content and Microcopy
+  /* Typography — Scale */
+  --text-caption: 10px;
+  --leading-caption: 1;
+  --tracking-caption: 0.86px;
+  --text-body: 16px;
+  --leading-body: 1.4;
+  --tracking-body: 0px;
+  --text-subheading: 18px;
+  --leading-subheading: 1.4;
+  --tracking-subheading: -0.9px;
+  --text-heading-sm: 32px;
+  --leading-heading-sm: 1;
+  --tracking-heading-sm: 1.344px;
+  --text-heading: 48px;
+  --leading-heading: 1;
+  --tracking-heading: 2.016px;
 
-Preferred labels:
+  /* Spacing */
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-10: 10px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-48: 48px;
+  --spacing-80: 80px;
+  --spacing-100: 100px;
 
-- “Run simulation,” not “Prove safety.”
-- “Critical deadline-miss ratio,” not “Failures” without definition.
-- “Fallback/early exit,” not “Recovery guaranteed.”
-- “Comparison policy,” not “losing baseline.”
-- “No misses observed,” not “zero misses guaranteed.”
-- “Predicted miss probability,” not “GNN confidence” unless confidence is formally defined.
-
-Empty states should teach the next action:
-
-- “No run selected. Choose a completed run or configure a new scenario.”
-- “No verification certificate matches this configuration. Run analysis to generate one.”
-- “This run used the heuristic predictor; GNN calibration charts do not apply.”
-
-## 17. Reusable Screen Specification Template
-
-Use this template when adding a new screen:
-
-```markdown
-### Screen: <name>
-
-**User question:** What exact question does this screen answer?
-
-**Entry points:** Navigation routes or links that open it.
-
-**Required data:** Endpoint, schema, evidence type, units, loading size.
-
-**Primary action:** One action, with authorization and side effect.
-
-**Layout:** Desktop, tablet, and mobile arrangement.
-
-**Components:** Named design-system components and their props.
-
-**States:** Empty, loading, success, partial, error, stale, permission denied.
-
-**Interactions:** Mouse, touch, keyboard, URL/deep-link behavior.
-
-**Accessibility:** Focus order, labels, alternate representation, announcements.
-
-**Performance:** Expected row/event count, virtualization, caching, rendering budget.
-
-**Telemetry:** UI events needed to diagnose usability; never include research results as analytics.
-
-**Acceptance criteria:** Testable Given/When/Then statements.
+  /* Border Radius */
+  --radius-md: 4px;
+  --radius-2xl: 16px;
+  --radius-2xl-2: 20px;
+  --radius-3xl: 24px;
+  --radius-3xl-2: 30px;
+  --radius-3xl-3: 40px;
+  --radius-full: 50px;
+  --radius-full-2: 60px;
+  --radius-full-3: 72px;
+  --radius-full-4: 84px;
+  --radius-full-5: 94px;
+  --radius-full-6: 120px;
+}
 ```
-
-## 18. Reusable Component Specification Template
-
-```markdown
-### Component: <name>
-
-**Purpose:**
-**Inputs/props:**
-**Output/events:**
-**Variants:**
-**Visual tokens:**
-**States:** default, hover, focus, active, disabled, loading, error, empty
-**Keyboard behavior:**
-**ARIA semantics:**
-**Responsive behavior:**
-**Data/evidence rules:**
-**Unit tests:**
-**Visual regression cases:**
-```
-
-## 19. Implementation Roadmap
-
-### UI-0 — Correctness cleanup
-
-- Fix character-encoding/mojibake in current HTML and README.
-- Replace unconditional safety claims.
-- Remove hard-coded metric fallbacks from `frontend/app.js`.
-- Label current walkthrough as a deterministic demo.
-
-### UI-1 — Shell and design tokens
-
-- Add semantic tokens as CSS custom properties.
-- Build responsive navigation, evidence badges, metric cards, status components, and error states.
-- Establish focus styles and reduced-motion behavior.
-
-### UI-2 — API client and immutable runs
-
-- Generate/define typed API client.
-- Implement scenario draft, validation, create-run, progress, archive, and replay loading.
-- Encode view state in URLs.
-
-### UI-3 — Canonical replay
-
-- Replace authored milestones with an event reducer.
-- Synchronize mesh, DAG, timeline, inspector, and cursor.
-- Add accessible node/event tables.
-
-### UI-4 — Research comparison
-
-- Build experiment filters, CI plots, paired plots, ECDF, Pareto view, and mechanism table.
-- Add provenance-preserving CSV/PDF/PNG export.
-
-### UI-5 — Models and verification
-
-- Add calibration, model latency, FL rounds, certificate summary, per-task RTA, and assumptions.
-- Implement stale certificate detection by configuration hash.
-
-### UI-6 — Quality gate
-
-- Playwright flows for run/replay/compare/export.
-- axe scan, keyboard-only test, reduced-motion test, and responsive visual regression.
-- Performance profile with a large trace.
-
-## 20. UI Acceptance Checklist
-
-- [ ] No experimental value is supplied by an HTML/JavaScript default when API data are missing.
-- [ ] Every metric displays units and evidence type.
-- [ ] Single-run views do not imply statistical confidence.
-- [ ] All milestones come from canonical events.
-- [ ] A reviewer can inspect why every candidate was accepted or rejected.
-- [ ] Offload cancellation and late-result discard are visible on the timeline.
-- [ ] Early-exit point and output utility are visible.
-- [ ] Verification claims show assumptions and configuration hash.
-- [ ] Model version, calibration state, and measured host are visible.
-- [ ] Missing/partial/failed data are not displayed as zero.
-- [ ] Mesh and charts have accessible text/table equivalents.
-- [ ] Keyboard users can configure, run, replay, inspect, and export.
-- [ ] Mobile layout supports the full inspection workflow.
-- [ ] Exports include source run IDs and checksums.
-- [ ] The interface never uses universal safety language for simulation-only evidence.
-
-## 21. Recommended First Screen to Build
-
-Build **Live Run in immutable replay mode** first, using one completed run and the canonical event API. It exercises the most important architecture: evidence badges, event-derived mesh and DAG state, synchronized timeline, decision explanation, task attempts, and provenance footer. Once replay is correct, add scenario editing and live progress; this prevents the UI from becoming another source of invented state.
-

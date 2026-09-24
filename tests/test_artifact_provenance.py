@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from ghostguard.artifacts import (
+from rts_predictive.artifacts import (
     EVENT_SCHEMA_VERSION,
     ArtifactIntegrityError,
     ArtifactRecord,
@@ -38,19 +38,19 @@ def make_manifest(**overrides):
     values = {
         "run_id": "run-001",
         "experiment_id": "experiment-smoke",
-        "cell_id": "bursty-ghostguard",
+        "cell_id": "bursty-rts_predictive",
         "pair_id": "bursty-seed-42",
         "status": RunStatus.RUNNING,
         "created_at_utc": "2026-09-20T10:00:00+00:00",
         "completed_at_utc": None,
         "seed": 42,
         "rng_schema_version": "rng/1",
-        "policy": PolicyRecord("ghostguard", "1.0.0", HASH_A),
-        "scenario": ScenarioRecord("ghostguard.scenario/1.0", HASH_B),
+        "policy": PolicyRecord("rts_predictive", "1.0.0", HASH_A),
+        "scenario": ScenarioRecord("rts_predictive.scenario/1.0", HASH_B),
         "model": ModelRecord(),
         "git": GitRecord("0123456789abcdef", True),
         "environment": EnvironmentRecord("3.12.4", HASH_A, "Windows-x86_64"),
-        "command": ("python", "-m", "ghostguard.experiments"),
+        "command": ("python", "-m", "rts_predictive.experiments"),
     }
     values.update(overrides)
     return RunManifest(**values)

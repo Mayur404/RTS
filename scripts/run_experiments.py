@@ -8,17 +8,17 @@ import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ghostguard.experiments.runner import ExperimentRunner
-from ghostguard.experiments.ablations import AblationRunner
-from ghostguard.experiments.generate_plots import generate_all_research_artifacts
+from rts_predictive.experiments.runner import ExperimentRunner
+from rts_predictive.experiments.ablations import AblationRunner
+from rts_predictive.experiments.generate_plots import generate_all_research_artifacts
 
 
 def main():
     print("==================================================")
-    print("     GHOSTGUARD BENCHMARK & EXPERIMENT HARNESS    ")
+    print("     PREDICTIVE_RUNTIME BENCHMARK & EXPERIMENT HARNESS    ")
     print("==================================================")
 
-    output_dir = "results"
+    output_dir = "research_runs/experiment_suite"
     os.makedirs(output_dir, exist_ok=True)
 
     print("\n[1/3] Running multi-scheduler comparative benchmarks across seeds...")
@@ -31,7 +31,7 @@ def main():
             "reactive_fallback",
             "always_offload",
             "predictive_no_fallback",
-            "ghostguard"
+            "rts_predictive"
         ],
         seeds=[42, 101, 202],
         scenarios=["bursty", "thermal", "unreliable"],

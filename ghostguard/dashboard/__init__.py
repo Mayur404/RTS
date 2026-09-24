@@ -1,3 +1,0 @@
-"""
-GhostGuard Streamlit Dashboard Package.
-"""

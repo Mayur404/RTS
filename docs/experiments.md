@@ -1,7 +1,7 @@
 # Experimental Evaluation & Ablation Suite
 
 ## 1. Experimental Setup
-The GhostGuard evaluation harness systematically evaluates 7 distinct scheduling paradigms under deterministic, seed-controlled simulation workloads:
+The PredictiveRuntime evaluation harness systematically evaluates 7 distinct scheduling paradigms under deterministic, seed-controlled simulation workloads:
 
 1. **Local-FIFO:** Tasks execute in First-In-First-Out order locally.
 2. **EDF-Local:** Earliest Deadline First uniprocessor dynamic priority algorithm.
@@ -9,7 +9,7 @@ The GhostGuard evaluation harness systematically evaluates 7 distinct scheduling
 4. **Reactive-Degradation:** Standard EDF with reactive degradation only triggered *after* severe contention or deadline miss is observed.
 5. **Always-Offload:** Naive cooperative offloading to available neighbors without deadline safety checking.
 6. **Predictive-NoFallback:** GNN-based deadline risk prediction triggering offload, but lacking active monitoring and local fallback.
-7. **GhostGuard (Proposed):** Full three-way predictive arbitration with active remote monitoring and analytically verified degraded fallback.
+7. **PredictiveRuntime (Proposed):** Full three-way predictive arbitration with active remote monitoring and analytically verified degraded fallback.
 
 ---
 
@@ -30,7 +30,7 @@ The GhostGuard evaluation harness systematically evaluates 7 distinct scheduling
 
 ## 3. Ablation Studies
 To demonstrate the empirical necessity of each component, the harness evaluates six ablations:
-- **Full-GhostGuard:** Baseline complete model.
+- **Full-PredictiveRuntime:** Baseline complete model.
 - **w/o GNN:** Predictive GNN replaced by static queue-length heuristic threshold.
 - **w/o Federated Learning:** Offload execution estimator replaced by nominal hardware clock assumption without load calibration.
 - **w/o Offloading:** Predictive local fallback only; no cooperative task sharing.

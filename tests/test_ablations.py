@@ -1,10 +1,10 @@
 """
-Unit and integration tests for GhostGuard ablation study runner
+Unit and integration tests for PredictiveRuntime ablation study runner
 and component graph assertions.
 """
 
 import pytest
-from ghostguard.experiments.ablations import (
+from rts_predictive.experiments.ablations import (
     ABLATION_REGISTRY,
     AblationConfig,
     instantiate_ablation_scheduler,
@@ -56,10 +56,10 @@ def test_ablation_runner_mini_suite(tmp_path):
     summary = runner.run_ablations(
         seeds=[42],
         duration_ms=50.0,
-        configs=["Full-GhostGuard", "w/o GNN", "w/o Offloading"],
+        configs=["Full-PredictiveRuntime", "w/o GNN", "w/o Offloading"],
     )
 
-    assert "Full-GhostGuard" in summary
+    assert "Full-PredictiveRuntime" in summary
     assert "w/o GNN" in summary
     assert "w/o Offloading" in summary
 
@@ -68,3 +68,9 @@ def test_ablation_runner_mini_suite(tmp_path):
         assert "critical_misses" in metrics
         assert "avg_response_time_ms" in metrics
         assert "avg_utility" in metrics
+
+    import json
+    from pathlib import Path
+    full_manifest = json.loads(Path(summary["Full-PredictiveRuntime"]["run_manifests"][0]).read_text())
+    assert full_manifest["components"]["predictor"] == "gnn"
+    assert full_manifest["components"]["federated_model_evidence"] == "SIMULATION_EVALUATED"

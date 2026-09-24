@@ -1,7 +1,7 @@
-# GhostGuard Research-Grade Implementation Plan
+# PredictiveRuntime Research-Grade Implementation Plan
 
 **Project:** Predictive Runtime Protection for Distributed Real-Time AI Systems  
-**Working name:** GhostGuard  
+**Working name:** PredictiveRuntime
 **Document status:** Implementation specification  
 **Primary source:** `report` (project proposal)  
 **Companion specification:** `UI Design.md`
@@ -18,6 +18,8 @@ The completed project must provide four things from one consistent source of tru
 2. A genuinely integrated predictor, federated remote-latency estimator, runtime arbiter, watchdog, and early-exit fallback.
 3. A statistically defensible experiment suite with raw results, confidence intervals, ablations, sensitivity studies, and machine-readable provenance.
 4. An interactive research dashboard that visualizes actual simulator events and clearly distinguishes measured, simulated, predicted, and analytically verified values.
+
+The simulator itself runs in two distinct modes (Section 7.7): a **seeded experiment mode**, which is bounded, deterministic, and replayable, and which alone produces the evidence behind item 3 and the paper's claims; and a **live mode**, which runs continuously with freshly drawn randomness for as long as the dashboard is open, is never a recorded-and-replayed trace, and exists purely so the dashboard in item 4 has something alive to show. Live mode is exploratory only and must never be cited as evidence.
 
 The dashboard is a research inspection tool, not the source of experimental truth. Publication tables and plots must be generated from raw experiment artifacts, never from constants embedded in UI or plotting code.
 
@@ -49,7 +51,7 @@ The repository is a useful prototype, but several current results are demonstrat
 | Area | Present now | Research-grade gap | Required disposition |
 |---|---|---|---|
 | Simulator | Event queue, periodic releases, devices, load/thermal state, schedulers | Stages are independently periodic rather than released through true DAG precedence; repeated `run()` calls can inject monitoring ticks again; resource and remote completion semantics need stronger invariants | Refactor around immutable scenario specs, DAG job instances, a monotonic run horizon, and explicit lifecycle events |
-| Scheduling | FIFO, RM, EDF, reactive, always-offload, predictive-no-fallback, GhostGuard | Scheduler semantics are simplified; overhead is not charged consistently; some offload paths can rely on estimated completion events instead of actual remote completion | Define dispatch/preemption contracts and charge every decision/context/communication cost |
+| Scheduling | FIFO, RM, EDF, reactive, always-offload, predictive-no-fallback, PredictiveRuntime | Scheduler semantics are simplified; overhead is not charged consistently; some offload paths can rely on estimated completion events instead of actual remote completion | Define dispatch/preemption contracts and charge every decision/context/communication cost |
 | Predictor | GNN architecture and saved weights exist | Runtime scheduler normally uses a heuristic surrogate because no predictor is injected; exceptions silently fall back; dataset labels are heuristic rather than observed counterfactual future outcomes | Add a versioned inference adapter, fail-visible fallback, rollout-derived labels, calibration, and latency measurements |
 | Dataset | Disjoint seed lists | A seed split alone does not prevent correlated snapshots of the same run crossing evaluation procedures; labels use current slack/load rules | Split by scenario family and seed before sampling; label from future no-intervention rollouts; publish class balance and leakage checks |
 | Federated learning | Client/server FedAvg code and standalone result file | Not connected to normal simulation runs; no modeled FL traffic/interference/staleness; no real ablation effect | Integrate model snapshots into candidate scoring and schedule FL work as explicit background events |
@@ -73,7 +75,7 @@ The test result confirms current consistency; it does not validate the scientifi
 
 ### RQ1 — Deadline reliability
 
-Does GhostGuard reduce total and critical deadline-miss ratio compared with local FIFO, RM, EDF, always-offload, reactive degradation, and predictive offload without fallback?
+Does PredictiveRuntime reduce total and critical deadline-miss ratio compared with local FIFO, RM, EDF, always-offload, reactive degradation, and predictive offload without fallback?
 
 - **Primary endpoint:** critical deadline-miss ratio.
 - **Secondary endpoints:** total DMR, p95/p99 response time, maximum observed lateness, jitter, and task utility.
@@ -140,7 +142,7 @@ No dashboard reducer may invent a state transition. No plot generator may synthe
 ### Recommended package boundaries
 
 ```text
-ghostguard/
+rts_predictive/
   domain/          # immutable specifications, IDs, enums, validation
   simulator/       # event loop, lifecycle reducers, clocks, RNG streams
   workloads/       # DAG templates, release generators, early-exit profiles
@@ -193,9 +195,13 @@ All specs receive a stable SHA-256 configuration hash after canonical JSON seria
 BLOCKED -> READY -> DISPATCHED -> RUNNING -> CHECKPOINT* -> COMPLETED -> COMMITTED
                   \-> TRANSMITTING -> REMOTE_READY -> REMOTE_RUNNING --/
 RUNNING/CHECKPOINT -> DEGRADED_RUNNING -> COMPLETED
-TRANSMITTING/REMOTE_RUNNING -> CANCEL_REQUESTED -> CANCELLED or LATE_REMOTE_RESULT_DISCARDED
+TRANSMITTING/REMOTE_RUNNING -> CANCEL_REQUESTED -> CANCELLED
+                                                 -> LATE_REMOTE_RESULT_DISCARDED
+                                                 -> COMPLETED (race-mode win only; see note below)
 Any unfinished state at deadline -> DEADLINE_MISSED
 ```
+
+`CANCEL_REQUESTED` is a pending state, not a terminal one. It resolves to `CANCELLED` once the cancellation is acknowledged, to `LATE_REMOTE_RESULT_DISCARDED` if a result arrives after acknowledgement, or — only under an explicitly configured first-valid-result race policy (Section 10, step 8) — to `COMPLETED` if the remote result arrives and wins the race before acknowledgement. An attempt that has actually reached `CANCELLED` can never subsequently reach `COMPLETED` or `COMMITTED`.
 
 Required invariants:
 
@@ -203,7 +209,7 @@ Required invariants:
 - A successor cannot become ready before all required predecessor outputs are committed.
 - Simulation time never moves backward.
 - Remaining work never becomes negative.
-- A cancelled attempt cannot later complete as a successful committed attempt.
+- An attempt that has reached the terminal `CANCELLED` state can never later complete as a successful committed attempt. (A `CANCEL_REQUESTED` attempt that wins an explicitly configured first-valid-result race is a race winner, not a cancelled attempt, and may commit; see the lifecycle note above and Section 10.)
 - Network bytes, compute service time, and scheduler overhead are conserved in metrics.
 - All stochastic draws come from named seeded RNG streams and are recordable for replay.
 
@@ -218,7 +224,7 @@ Core event types:
 - `PIPELINE_RELEASE`, `TASK_READY`, `DISPATCH_DECISION_START`, `DISPATCH_DECISION_END`
 - `EXECUTION_START`, `EXECUTION_QUANTUM_END`, `PREEMPT`, `CHECKPOINT_REACHED`
 - `REQUEST_TX_START`, `REQUEST_TX_END`, `REMOTE_EXECUTION_START`, `RESULT_TX_START`, `RESULT_TX_END`
-- `WATCHDOG_TICK`, `CANCEL_REQUEST`, `CANCEL_ACK`, `LATE_RESULT_DISCARDED`
+- `WATCHDOG_TICK`, `CANCEL_REQUEST`, `CANCEL_ACK`, `LATE_REMOTE_RESULT_DISCARDED`
 - `DEADLINE`, `TASK_COMMIT`, `PIPELINE_COMPLETE`, `PIPELINE_DROP`
 - `FAULT_START`, `FAULT_END`, `THERMAL_UPDATE`, `LINK_STATE_CHANGE`
 - `FL_LOCAL_TRAIN_START/END`, `FL_UPLOAD_START/END`, `FL_AGGREGATE`, `MODEL_PUBLISH`
@@ -273,11 +279,22 @@ Exit E3: safety heuristic WCET  2.5 ms, utility 0.55
 
 At each checkpoint, compute a conservative finish bound including checkpoint overhead and higher-priority interference. Select the highest-utility exit whose bound meets the deadline. If none is feasible, execute the configured minimum safety action and record an unavoidable miss; never silently mark it safe.
 
+### 7.7 Live / continuous simulation mode
+
+The dashboard needs a mode that feels alive rather than a scrubber over a fixed recording. This is a second entry point into the same event loop and canonical event schema described in 7.1 — it is not a second simulator and must not fork the domain model.
+
+- `run_live()` starts the same event loop as `run_until(t)`, but with no fixed horizon: it keeps releasing new pipeline jobs, faults, and FL background events indefinitely, drawing fresh randomness each session rather than replaying a fixed, pre-declared seed.
+- Live mode is **not** a played-back recording. It does not read from `events.jsonl.zst` or any stored run; every event is generated on the fly, in the same canonical event schema used everywhere else, and streamed to the dashboard as it happens (Section 14 adds a streaming endpoint for this).
+- Because live mode has no fixed seed, no fixed duration, and is never written to `results/runs/<run_id>/` as a scientific artifact, it produces no evidence for RQ1–RQ5 and must never be cited in a table, plot, or paper claim. The dashboard must visibly and persistently mark live mode as "live — not recorded, exploratory only" whenever it is active, distinct from the evidence labels used for replayed experiment runs.
+- A person may pin a policy to watch (for example, "watch PredictiveRuntime defend against a live thermal fault") and may optionally save a bounded window of a live session for later playback. Any such save is tagged `unseeded_demo` and is excluded from the provenance-checked experiment/aggregate pipeline by construction — it can never enter `/api/v1/compare` or an experiment aggregate.
+- Live mode still charges every cost the seeded simulator charges (decision overhead, network bytes, thermal derating, and so on) and still runs a real watchdog and arbiter, since the point is to show the actual arbitration logic working under continuously fresh conditions — it simply is not held to the reproducibility bar that experiment mode is.
+- Implementation must bound memory: a live session keeps only a rolling window of recent events/frames in memory (dropping or downsampling older ones) rather than accumulating an ever-growing in-memory log, since by design it never terminates on its own.
+
 ## 8. Prediction Pipeline
 
 ### 8.1 Prediction target
 
-At decision time `t`, predict whether the selected task or pipeline will miss within horizon `H` under the reference “continue current policy with no GhostGuard intervention” trajectory. This counterfactual definition prevents the label from being changed by the intervention it triggers.
+At decision time `t`, predict whether the selected task or pipeline will miss within horizon `H` under the reference “continue current policy with no PredictiveRuntime intervention” trajectory. This counterfactual definition prevents the label from being changed by the intervention it triggers.
 
 For each sampled state:
 
@@ -324,14 +341,14 @@ Features must be causally available at time `t`: remaining work estimate, absolu
 ### 8.4 Runtime adapter contract
 
 ```python
-Prediction(
-    miss_probability: float,
-    ttv_ms: float | None,
-    cause_probabilities: dict[str, float],
-    inference_us: int,
-    model_version: str,
-    calibrated: bool,
-)
+@dataclass(frozen=True)
+class Prediction:
+    miss_probability: float
+    ttv_ms: float | None
+    cause_probabilities: dict[str, float]
+    inference_us: int
+    model_version: str
+    calibrated: bool
 ```
 
 If inference fails or exceeds its budget, record the failure and execute a declared fail-safe policy. The experiment matrix must include this behavior.
@@ -433,9 +450,7 @@ Use a preregistered matrix with at least:
 - Fault severity and duration: at least three levels each
 - Network quality: at least three bandwidth/jitter regimes
 - Workload: multiple DAG widths/depths and criticality mixes
-- Scheduler/policy: all seven baselines plus full GhostGuard
-
-Use at least 30 paired test seeds per cell where runtime permits. If fewer are used, justify power/precision and report wide uncertainty honestly. Run warm-up and drain intervals so boundary censoring is not counted as a miss.
+- Scheduler/policy: all six baselines defined in RQ1 (local FIFO, RM, EDF, always-offload, reactive degradation, predictive offload without fallback) plus full PredictiveRuntime — seven scheduler/policy conditions total
 
 ### 12.2 Baseline fairness
 
@@ -448,7 +463,7 @@ Use at least 30 paired test seeds per cell where runtime permits. If fewer are u
 
 ### 12.3 Required ablations
 
-- Full GhostGuard
+- Full PredictiveRuntime
 - Without GNN: documented heuristic predictor
 - Without FL: static/specification estimator
 - Without offloading
@@ -541,6 +556,9 @@ results/paper/provenance.json
 - `GET /api/v1/models` — predictor bundles, versions, calibration, and measured latency.
 - `GET /api/v1/verification/{config_hash}` — verification certificate.
 - `GET /api/v1/experiments/{experiment_id}` — aggregate status and artifacts.
+- `POST /api/v1/live/sessions` — start a live, continuously running, freshly seeded simulation session; returns a `session_id`. Live sessions are never written to `results/runs/` and are structurally excluded from `/api/v1/compare` and `/api/v1/experiments`.
+- `GET /api/v1/live/sessions/{session_id}/stream` — server-sent-events or WebSocket stream of canonical events as they occur, for as long as the session stays open.
+- `DELETE /api/v1/live/sessions/{session_id}` — stop and discard a live session.
 
 Validate ranges and enum values. Do not use permissive CORS in production mode. Return structured errors with `code`, `message`, `field`, and `details`.
 
@@ -659,11 +677,15 @@ Validate ranges and enum values. Do not use permissive CORS in production mode. 
 
 ### Phase 8 — Research dashboard
 
-Implement the screens, visual semantics, accessibility, and data contracts in `UI Design.md`.
+**Work**
+
+- Implement the screens, visual semantics, accessibility, and data contracts in `UI Design.md`.
+- Implement live mode (Section 7.7): a continuously running, freshly randomized simulation streamed to the dashboard, clearly labeled as not recorded and excluded from paper evidence, alongside the existing views that replay a recorded run.
 
 **Acceptance gate**
 
 - Every rendered transition is traceable to a canonical event; evidence badges and units appear; keyboard and responsive acceptance checks pass.
+- Live mode is visibly and persistently labeled as exploratory/not-recorded, cannot be selected as a source for `/api/v1/compare` or any aggregate/statistics endpoint, and an open-ended live session runs indefinitely on a bounded rolling window of events without unbounded memory growth.
 
 ### Phase 9 — Paper package and reproducibility release
 
@@ -695,20 +717,20 @@ If the deadline is shorter, prioritize simulator correctness, actual GNN integra
 
 | Existing path | Planned responsibility/change |
 |---|---|
-| `ghostguard/config.py` | Split validated immutable specs from runtime state; retain compatibility exports |
-| `ghostguard/simulator/engine.py` | Monotonic event loop, DAG release, lifecycle events, RNG/replay |
-| `ghostguard/simulator/tasks.py` | Pipeline jobs, attempts, exit points, single-commit semantics |
-| `ghostguard/simulator/resources.py` | Separate queue/capacity, overhead, calibrated thermal/service models |
-| `ghostguard/schedulers/ghostguard.py` | Pure decision policy using predictor/estimator interfaces and bound calculator |
-| `ghostguard/gnn/dataset.py` | Snapshot/fork rollout labels and manifest-backed splits |
-| `ghostguard/gnn/trainer.py` | calibration, threshold selection, model bundle, full metrics |
-| `ghostguard/federated/*` | background events, q95 estimates, staleness, integration |
-| `ghostguard/verification/timing_analyzer.py` | iterative RTA/certificates; remove unused scheduler argument behavior |
-| `ghostguard/experiments/ablations.py` | typed component substitutions with wiring assertions |
-| `ghostguard/experiments/runner.py` | versioned matrix, run manifests, paired seeds, resume |
-| `ghostguard/experiments/plotting.py` | data-driven plots only; no generated pseudo-observations |
-| `ghostguard/dashboard/timeline_tracer.py` | replace authored story frames with event-to-frame reducer |
-| `ghostguard/api/server.py` | `/api/v1` asynchronous run/replay/compare contracts and strict validation |
+| `rts_predictive/config.py` | Split validated immutable specs from runtime state; retain compatibility exports |
+| `rts_predictive/simulator/engine.py` | Monotonic event loop, DAG release, lifecycle events, RNG/replay |
+| `rts_predictive/simulator/tasks.py` | Pipeline jobs, attempts, exit points, single-commit semantics |
+| `rts_predictive/simulator/resources.py` | Separate queue/capacity, overhead, calibrated thermal/service models |
+| `rts_predictive/schedulers/rts_predictive.py` | Pure decision policy using predictor/estimator interfaces and bound calculator |
+| `rts_predictive/gnn/dataset.py` | Snapshot/fork rollout labels and manifest-backed splits |
+| `rts_predictive/gnn/trainer.py` | calibration, threshold selection, model bundle, full metrics |
+| `rts_predictive/federated/*` | background events, q95 estimates, staleness, integration |
+| `rts_predictive/verification/timing_analyzer.py` | iterative RTA/certificates; remove unused scheduler argument behavior |
+| `rts_predictive/experiments/ablations.py` | typed component substitutions with wiring assertions |
+| `rts_predictive/experiments/runner.py` | versioned matrix, run manifests, paired seeds, resume |
+| `rts_predictive/experiments/plotting.py` | data-driven plots only; no generated pseudo-observations |
+| `rts_predictive/dashboard/timeline_tracer.py` | replace authored story frames with event-to-frame reducer |
+| `rts_predictive/api/server.py` | `/api/v1` asynchronous run/replay/compare contracts and strict validation |
 | `frontend/*` | implement `UI Design.md`; remove hard-coded metrics and claims |
 | `scripts/generate_paper_artifacts.py` | consume frozen aggregate artifacts and emit provenance |
 | `tests/*` | invariants, contracts, exact verification, replay, ablation and provenance tests |
@@ -762,7 +784,7 @@ Use small fixed smoke matrices to test schema, determinism, and broad ordering o
 
 | Risk | Consequence | Mitigation |
 |---|---|---|
-| Simulator favors GhostGuard assumptions | Invalid comparison | Shared models, common random numbers, baseline review, publish scenarios |
+| Simulator favors PredictiveRuntime assumptions | Invalid comparison | Shared models, common random numbers, baseline review, publish scenarios |
 | Label leakage from adjacent snapshots | Inflated predictor scores | Group split before sampling; leakage audit |
 | Predictor improves DMR by degrading everything | Low task utility hidden | Jointly report on-time utility and fallback rate |
 | Mean latency underestimates tail | Unsafe offloads | Use calibrated quantiles and sensitivity analysis |
@@ -776,7 +798,7 @@ Use small fixed smoke matrices to test schema, determinism, and broad ordering o
 The research implementation is complete only when all statements below are true:
 
 - [ ] DAG dependencies and end-to-end deadlines are actually simulated.
-- [ ] The saved and calibrated predictor is invoked in GhostGuard experiment runs.
+- [ ] The saved and calibrated predictor is invoked in PredictiveRuntime experiment runs.
 - [ ] The federated estimator is invoked, versioned, and charged as background work.
 - [ ] Early exit uses valid task-specific checkpoints and reports utility.
 - [ ] Offload cancellation and late return behavior cannot double-complete work.
@@ -785,6 +807,7 @@ The research implementation is complete only when all statements below are true:
 - [ ] At least 30 paired seeds per primary cell are run, or a documented precision justification is provided.
 - [ ] Confidence intervals, effect sizes, model calibration, and inference tail latency are reported.
 - [ ] Dashboard states derive from canonical events and contain evidence labels.
+- [ ] Live mode runs continuously with fresh, non-recorded randomness, is visibly labeled as exploratory, and is structurally excluded from every aggregate/statistics/comparison pathway.
 - [ ] Figures and LaTeX tables contain no embedded experimental constants.
 - [ ] Every paper number maps through `provenance.json` to raw run IDs.
 - [ ] A clean-environment smoke reproduction passes.
@@ -801,3 +824,23 @@ The research implementation is complete only when all statements below are true:
 7. Run a small pilot matrix to estimate variance and determine the final seed count.
 8. Implement the dashboard shell and experiment inspector from `UI Design.md` after the API/event contracts stabilize.
 
+## 22. Revision Notes (This Review Pass)
+
+This pass checked the plan for internal consistency across sections and corrected four issues. No scope, phasing, research question, or acceptance-gate content was changed — only internal contradictions and one syntax error.
+
+1. **Baseline count (Section 12.1).** The experiment factor list previously read "all seven baselines plus full PredictiveRuntime." RQ1 and the repository audit table (Section 3) both name exactly six baselines — local FIFO, RM, EDF, always-offload, reactive degradation, and predictive offload without fallback. "Seven" appears to have counted PredictiveRuntime itself as a baseline. Corrected to six baselines plus PredictiveRuntime, seven conditions in total, and spelled out the six by name to prevent the same ambiguity from recurring when the matrix is implemented.
+2. **Cancellation/race semantics (Section 6.3).** The lifecycle diagram only let `CANCEL_REQUESTED` resolve to `CANCELLED` or `LATE_REMOTE_RESULT_DISCARDED`. That contradicted Section 10, step 8, which explicitly allows a late remote result to win an allowed first-valid-result race and be committed. Added the missing transition and a note clarifying that `CANCEL_REQUESTED` is a pending, not terminal, state, and narrowed the "no commit after cancellation" invariant to apply once an attempt reaches the terminal `CANCELLED` state, not while it is merely pending cancellation.
+3. **Event naming (Sections 6.3 vs. 7.1).** The lifecycle diagram used `LATE_REMOTE_RESULT_DISCARDED`; the core event-type catalog used the shorter `LATE_RESULT_DISCARDED` for what is evidently the same event. Standardized on `LATE_REMOTE_RESULT_DISCARDED` in both places so the event name matches the state it produces.
+4. **Invalid pseudocode (Section 8.4).** The `Prediction(...)` runtime adapter contract mixed call syntax with inline type annotations, which is not valid Python. Rewritten as a `@dataclass` class definition with the same fields, so it can be copied directly into an implementation.
+
+## 23. Revision Notes (Live Mode Addition)
+
+Added a second, non-scientific simulation mode so the dashboard has a continuously running, freshly randomized simulation to show instead of only a scrubber over a recorded run:
+
+- New **Section 7.7** defines `run_live()`: the same event loop and canonical event schema as the seeded simulator, but unbounded in duration and freshly randomized per session rather than replaying a fixed, recorded trace.
+- **Section 1** now states up front that the project has two simulator modes — seeded/deterministic (the only source of evidence) and live/continuous (exploratory only) — so this distinction is visible before a reader reaches Section 7.
+- **Phase 8** work and acceptance gate were extended to require implementing live mode and to require that it be structurally impossible to route it into `/api/v1/compare`, `/api/v1/experiments`, or any aggregate/statistics artifact.
+- **Section 14** gained `POST /api/v1/live/sessions`, a streaming `GET .../stream` endpoint, and `DELETE /api/v1/live/sessions/{session_id}`, kept in a separate `/live/` namespace from the recorded-run endpoints.
+- **Definition of Done** gained a check that live mode is clearly labeled and cannot leak into any evidence pathway.
+
+This is additive: it does not relax anything in the seeded/deterministic experiment pipeline that RQ1–RQ5 and the paper depend on. Live mode is a dashboard feature, not a new source of scientific evidence — the plan is explicit that mixing the two would undermine the provenance guarantees the rest of the document establishes.

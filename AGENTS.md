@@ -1,4 +1,4 @@
-# GhostGuard Agent Rules
+# PredictiveRuntime Agent Rules
 
 Read `Implementation Plan.md` and `UI Design.md` before making material changes.
 
@@ -13,7 +13,7 @@ Read `Implementation Plan.md` and `UI Design.md` before making material changes.
 
 ## Architecture
 
-- `ghostguard/domain/` owns shared immutable specifications, runtime identifiers, canonical events, and schema versions.
+- `rts_predictive/domain/` owns shared immutable specifications, runtime identifiers, canonical events, and schema versions.
 - Simulation time is represented internally as integer microseconds.
 - A task may have multiple execution attempts but at most one committed result.
 - Canonical events are the source of truth for metrics, replay frames, dashboard state, and artifacts.

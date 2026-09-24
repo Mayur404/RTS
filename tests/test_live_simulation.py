@@ -1,15 +1,19 @@
 """
-Unit and integration tests for GhostGuard continuous live simulation engine.
+Unit and integration tests for PredictiveRuntime continuous live simulation engine.
 Validates session initialization, discrete stepping, on-the-fly fault injection,
 and physical node metadata.
 """
 
 import pytest
-from ghostguard.api.server import (
+from fastapi import HTTPException
+from rts_predictive.api.server import (
     live_start,
     live_step,
     live_inject_fault,
     live_reset,
+    create_live_session,
+    get_live_session_events,
+    delete_live_session,
     LiveStartRequest,
     LiveStepRequest,
     LiveFaultRequest,
@@ -56,6 +60,99 @@ def test_live_simulation_start():
     assert snapshot["metrics_gg"]["missed"] == 0
 
 
+def test_live_pipeline_graph_tracks_real_stage_releases():
+    start = live_start(LiveStartRequest(fleet_size=4, seed=42, horizon_ms=300.0))
+    pipeline = start["pipeline"]
+    assert {stage["id"] for stage in pipeline["stages"]} == {
+        "Sense", "ObstacleDetection", "Perception", "Tracking", "PathPlanning", "Actuation"
+    }
+    assert {tuple(edge.values()) for edge in pipeline["edges"]} >= {
+        ("Sense", "ObstacleDetection"), ("PathPlanning", "Actuation")
+    }
+    initial = pipeline["latest_jobs"]["Device_1"]["stages"]
+    assert initial["Sense"]["state"] == "RELEASED"
+    assert initial["ObstacleDetection"]["state"] == "WAITING"
+
+    advanced = live_step(LiveStepRequest(delta_ms=10.0))
+    stages = advanced["pipeline"]["latest_jobs"]["Device_1"]["stages"]
+    assert stages["Sense"]["state"] == "COMPLETED"
+    assert stages["ObstacleDetection"]["state"] in {"RELEASED", "READY", "RUNNING", "COMPLETED"}
+    if stages["Perception"]["state"] != "WAITING":
+        assert stages["ObstacleDetection"]["state"] == "COMPLETED"
+
+    focus = advanced["pipeline"]["focus_jobs"]["Device_1"]
+    assert focus["job_id"] == advanced["pipeline"]["latest_jobs"]["Device_1"]["job_id"]
+    assert all(
+        "remaining_work_ms" in record
+        for record in focus["stages"].values()
+        if record["state"] != "WAITING"
+    )
+
+
+def test_live_dag_focus_follows_active_job_instead_of_newest_release():
+    started = live_start(LiveStartRequest(fleet_size=2, seed=42, horizon_ms=300.0))
+    advanced = live_step(LiveStepRequest(
+        session_id=started["session_id"], delta_ms=55.0
+    ))
+    latest = advanced["pipeline"]["latest_jobs"]["Device_1"]
+    focus = advanced["pipeline"]["focus_jobs"]["Device_1"]
+    assert focus["release_time_ms"] <= latest["release_time_ms"]
+    assert any(stage["state"] != "WAITING" for stage in focus["stages"].values())
+
+
+def test_live_playback_handles_uneven_submillisecond_steps():
+    live_start(LiveStartRequest(fleet_size=4, seed=42, horizon_ms=300.0))
+    times = [live_step(LiveStepRequest(delta_ms=delta))["current_time_ms"]
+             for delta in (40.1, 36.8, 23.8, 40.0, 40.0, 40.0)]
+    assert times == sorted(times)
+    assert times[-1] > 200.0
+
+
+def test_live_clock_and_pipeline_continue_beyond_initial_horizon():
+    started = live_start(LiveStartRequest(fleet_size=2, seed=42, horizon_ms=120.0))
+    session_id = started["session_id"]
+    live_step(LiveStepRequest(session_id=session_id, delta_ms=100.0))
+    advanced = live_step(LiveStepRequest(session_id=session_id, delta_ms=100.0))
+
+    assert advanced["current_time_ms"] == 200.0
+    assert advanced["status"] == "RUNNING"
+    assert advanced["evidence"] == "LIVE_NON_EVIDENCE"
+    assert all(
+        job["release_time_ms"] >= 150.0
+        for job in advanced["pipeline"]["latest_jobs"].values()
+    )
+
+
+def test_live_sessions_do_not_reset_each_other():
+    first = live_start(LiveStartRequest(fleet_size=4, seed=10, horizon_ms=300.0))
+    second = live_start(LiveStartRequest(fleet_size=6, seed=11, horizon_ms=300.0))
+    assert first["session_id"] != second["session_id"]
+    a = live_step(LiveStepRequest(session_id=first["session_id"], delta_ms=25.0))
+    b = live_step(LiveStepRequest(session_id=second["session_id"], delta_ms=10.0))
+    assert a["fleet_size"] == 4 and a["current_time_ms"] == 25.0
+    assert b["fleet_size"] == 6 and b["current_time_ms"] == 10.0
+    with pytest.raises(HTTPException) as error:
+        live_step(LiveStepRequest(session_id="missing", delta_ms=10.0))
+    assert error.value.status_code == 404
+
+
+@pytest.mark.parametrize("fleet_size", [6, 8])
+def test_large_live_fleets_have_connected_peer_graph(fleet_size):
+    snapshot = live_start(LiveStartRequest(fleet_size=fleet_size, seed=42, horizon_ms=300.0))
+    neighbors = {node_id: set() for node_id in snapshot["nodes"]}
+    for link in snapshot["links"]:
+        neighbors[link["source"]].add(link["target"])
+        neighbors[link["target"]].add(link["source"])
+    reached = {"Device_1"}
+    frontier = ["Device_1"]
+    while frontier:
+        for peer in neighbors[frontier.pop()]:
+            if peer not in reached:
+                reached.add(peer)
+                frontier.append(peer)
+    assert reached == set(snapshot["nodes"])
+
+
 def test_live_simulation_step():
     """Verify monotonic time progression and metric updates during stepping."""
     live_start(LiveStartRequest(fleet_size=4, seed=42))
@@ -100,3 +197,18 @@ def test_live_simulation_reset():
 
     reset_snap = live_reset(LiveStartRequest(fleet_size=4, seed=42))
     assert reset_snap["current_time_ms"] == 0.0
+
+
+def test_api_v1_live_session_event_cursor_and_delete():
+    snapshot = create_live_session(LiveStartRequest(fleet_size=2, seed=17, horizon_ms=150.0))
+    session_id = snapshot["session_id"]
+    live_step(LiveStepRequest(session_id=session_id, delta_ms=20.0))
+    first = get_live_session_events(session_id, after_sequence=0)
+    assert first["evidence"] == "LIVE_NON_EVIDENCE"
+    assert first["events"]
+    second = get_live_session_events(session_id, after_sequence=first["next_sequence"])
+    assert second["events"] == []
+    assert delete_live_session(session_id) is None
+    with pytest.raises(HTTPException) as error:
+        get_live_session_events(session_id, after_sequence=0)
+    assert error.value.status_code == 404

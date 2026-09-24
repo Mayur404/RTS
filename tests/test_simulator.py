@@ -3,11 +3,12 @@ Unit tests for the Real-Time Systems Simulator engine, tasks, and resources.
 """
 
 import pytest
-from ghostguard.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES, GhostGuardConfig
-from ghostguard.simulator.tasks import TaskInstance, TaskState
-from ghostguard.simulator.resources import ResourceManager
-from ghostguard.simulator.engine import DiscreteEventSimulator
-from ghostguard.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES, PredictiveRuntimeConfig
+from rts_predictive.simulator.tasks import TaskInstance, TaskState
+from rts_predictive.simulator.resources import ResourceManager
+from rts_predictive.simulator.engine import DiscreteEventSimulator
+from rts_predictive.simulator.events import EventType
+from rts_predictive.schedulers.local_fifo import LocalFIFOScheduler
 
 
 def test_task_deadline_and_response_time():
@@ -53,7 +54,7 @@ def test_resource_manager_contention_and_thermal():
 
 def test_deterministic_simulation_repeatability():
     """Confirms that two runs with the exact same seed produce 100% identical outcomes."""
-    config = GhostGuardConfig(simulation_duration_ms=200.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=200.0)
 
     sim1 = DiscreteEventSimulator(config=config, seed=42, fleet_size=4)
     sim1.schedule_periodic_tasks(duration_ms=200.0)
@@ -72,9 +73,15 @@ def test_deterministic_simulation_repeatability():
 
 
 def test_deadline_expiry_is_never_counted_as_success():
-    config = GhostGuardConfig(simulation_duration_ms=25.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=25.0)
     sim = DiscreteEventSimulator(config=config, seed=7, fleet_size=1)
-    sim.schedule_periodic_tasks(duration_ms=1.0)
+    task = TaskInstance.from_profile(
+        DEFAULT_TASK_PROFILES["Perception"], "forced-expiry", "Device_1", 0.0
+    )
+    task.deadline_ms = 0.1
+    sim.all_tasks.append(task)
+    sim.events.push(0.0, EventType.TASK_RELEASE, "Device_1", task)
+    sim.events.push(task.deadline_ms, EventType.DEADLINE_EXPIRED, "Device_1", task)
     sim.attach_scheduler(LocalFIFOScheduler())
 
     metrics = sim.run(duration_ms=25.0)
@@ -89,7 +96,7 @@ def test_deadline_expiry_is_never_counted_as_success():
 
 
 def test_incremental_run_preserves_future_events():
-    config = GhostGuardConfig(simulation_duration_ms=40.0)
+    config = PredictiveRuntimeConfig(simulation_duration_ms=40.0)
 
     incremental = DiscreteEventSimulator(config=config, seed=11, fleet_size=1)
     incremental.schedule_periodic_tasks(duration_ms=40.0)

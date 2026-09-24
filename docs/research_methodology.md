@@ -1,8 +1,8 @@
-# Research Methodology: GhostGuard
+# Research Methodology: PredictiveRuntime
 
 ## 1. Research Question & Core Hypothesis
 - **Research Question:** Can a predictive arbitration policy that selectively routes real-time workloads between local execution, cooperative offloading, and a verified local fallback reduce deadline violations across distributed edge fleets operating under computational contention and uncertain wireless links?
-- **Hypothesis:** GhostGuard's proactive offload monitoring and verified fallback can reduce deadline misses relative to blind cooperative offloading while preserving critical timing safety when an offload target becomes unreliable mid-flight. Reactive degradation remains an explicit benchmark rather than an assumed weaker policy.
+- **Hypothesis:** PredictiveRuntime's proactive offload monitoring and verified fallback can reduce deadline misses relative to blind cooperative offloading while preserving critical timing safety when an offload target becomes unreliable mid-flight. Reactive degradation remains an explicit benchmark rather than an assumed weaker policy.
 
 ---
 

@@ -3,15 +3,15 @@ Unit tests for Real-Time Fleet Baseline Schedulers.
 """
 
 import pytest
-from ghostguard.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES
-from ghostguard.simulator.device import DeviceNode
-from ghostguard.simulator.tasks import TaskInstance
-from ghostguard.schedulers.local_fifo import LocalFIFOScheduler
-from ghostguard.schedulers.edf import EDFScheduler
-from ghostguard.schedulers.rm import RMScheduler
-from ghostguard.schedulers.reactive_fallback import ReactiveFallbackScheduler
-from ghostguard.schedulers.always_offload import AlwaysOffloadScheduler
-from ghostguard.simulator.engine import DiscreteEventSimulator
+from rts_predictive.config import DEFAULT_TASK_PROFILES, HARDWARE_PROFILES
+from rts_predictive.simulator.device import DeviceNode
+from rts_predictive.simulator.tasks import TaskInstance
+from rts_predictive.schedulers.local_fifo import LocalFIFOScheduler
+from rts_predictive.schedulers.edf import EDFScheduler
+from rts_predictive.schedulers.rm import RMScheduler
+from rts_predictive.schedulers.reactive_fallback import ReactiveFallbackScheduler
+from rts_predictive.schedulers.always_offload import AlwaysOffloadScheduler
+from rts_predictive.simulator.engine import DiscreteEventSimulator
 
 
 def test_edf_ordering():
