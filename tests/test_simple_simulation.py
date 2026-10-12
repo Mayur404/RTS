@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not NODE, reason='Node required')
 def js(setup, start, end, expression, layout=False):
     function = SOURCE[SOURCE.index(start):SOURCE.index(end, SOURCE.index(start))]
     helper = (ROOT / 'frontend/graph-layout.js').read_text(encoding='utf-8') if layout else ''
-    result = subprocess.run([NODE, '-e', helper + setup + '\n' + function + '\n(async()=>console.log(JSON.stringify(await (' + expression + '))))().catch(e=>{console.error(e);process.exit(1)});'], capture_output=True, text=True, check=True)
+    result = subprocess.run([NODE, '-e', helper + setup + '\n' + function + '\n(async()=>console.log(JSON.stringify(await (' + expression + '))))().catch(e=>{console.error(e);process.exit(1)});'], capture_output=True, text=True, encoding='utf-8', check=True)
     return json.loads(result.stdout)
 
 
@@ -27,6 +27,16 @@ def test_live_connections_exclude_queued_and_finished_transfers():
 def test_packets_wait_at_sender_until_serialization_finishes():
     setup = 'const t={source:"D",start_us:0,end_us:100,bytes:100};const x={devices:[{device_id:"D",bandwidth_mbps:10}],time_us:50};'
     assert js(setup, 'function transferFraction', '\nasync function request', '[transferFraction(t,x),transferFraction(t,{...x,time_us:90}),transferFraction(t,{...x,time_us:200})]') == [0, .5, 1]
+
+
+@pytest.mark.parametrize('status',['RUNNING','QUEUED','COMMITTED','MISSED','SKIPPED'])
+def test_task_labels_preserve_terminal_outcome_and_clear_active_host_arrow(status):
+    task={'state':status,'degraded':True,'host':'Device_2'}
+    labels={'RUNNING':'Running','QUEUED':'Queued','COMMITTED':'Committed','MISSED':'Missed','SKIPPED':'Skipped'}
+    out=js('const statusNames='+json.dumps(labels)+';', 'function taskStatusLabel', '\nfunction renderBoard',
+           f'[taskStatusLabel({json.dumps(task)}),taskHostLabel({json.dumps(task)},"Device_1")]')
+    assert out[0]==labels[status]+' · early exit'
+    assert out[1]==(' → D2' if status in ['RUNNING','QUEUED'] else '')
 
 
 def test_paired_categories_include_regressions_and_unresolved_jobs():

@@ -52,3 +52,24 @@ raw events and versioned manifests, which are not all shipped in Git.
 
 See [research methods](research_methods.md) and
 [publication scope](publication_readiness_review.md) for the evidence boundaries.
+
+## Live connection lifecycle follow-up
+
+Fixed historical watchdog arrows remaining on the map after recovery finishes.
+The map now shows only active admitted watchdog recovery; terminal-task history
+stays in the protection timeline. Active host indicators disappear from completed,
+missed and skipped task nodes. Early-exit nodes explicitly show their canonical
+outcome, and missing resource samples clear stale task-owner labels.
+
+Live packet elements persist across observations. Repeated renders of an accepted
+snapshot preserve animation identity; interrupted interpolation starts at the
+displayed position. Pausing clears animations, completed packets are removed, and
+completed runs have no live connections. Actual in-flight cancellation/result
+traffic is retained until its canonical network event resolves.
+
+The full suite passed **449 tests** (the same 2,335 dependency warnings). Chrome
+checks passed for real packet lifecycle/animation continuity, recorded recovery
+completion and final-map clearing, playback/pause, and facility/task layout.
+Local evidence is under `.validation/live-connections-fix/`. This follow-up changes
+presentation and checks only; runtime/API/event/model schemas and metrics are
+unchanged. Device travel remains illustrative.

@@ -23,7 +23,12 @@ workflow or closing inspection clears stale protection selection.
 Directional live arrows represent actual in-flight requests, results, cancellations
 and learning updates. Queued/finished transfers are excluded. Serialization holds
 the marker at the sender; brief smoothing uses accepted observations only.
-An orange dashed recovery arrow is a recorded mechanism, not a network packet.
+An orange dashed recovery arrow shows an admitted watchdog fallback while its
+task is active. It disappears on commitment, deadline miss or skip; the recorded
+timeline remains inspectable. It is a mechanism, not a network packet. In-flight
+network cancellation or discarded-result traffic may legitimately outlive a task.
+Packet SVG nodes persist across snapshots and same-snapshot redraws preserve
+their animations. Pausing clears interpolation; completed runs have no live links.
 
 Controls select conditions, 2–8 devices, task mix and 50–150% release rate, plus a
 0.05–3× presentation speed slider. Settings create a new paired run after any

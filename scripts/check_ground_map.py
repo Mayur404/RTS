@@ -83,9 +83,16 @@ def main():
         page.evaluate('async()=>{for(let i=0;i<80;i++){const t=researchState.snapshot.after.tasks.find(t=>t.id===researchState.protectionTask);if(["COMMITTED","MISSED","SKIPPED"].includes(t.state))break;await advance(500)}}')
         record=page.evaluate('protectionRecord(researchState.snapshot,researchState.protectionTask,researchState.protectionEvents)')
         assert next(t[2] for t in record['steps'] if t[0]=='EARLY_EXIT') is not None
+        assert record['task']['state'] in ['COMMITTED','MISSED','SKIPPED']
+        assert page.locator('[data-recovery-task]').count()==0,'Completed recovery left a live map arrow'
+        assert page.locator('[data-protection-milestone="WATCHDOG_ABORT"]').get_attribute('data-observed')=='true'
         check_usage()
         page.screenshot(path=str(root/'watchdog-desktop.png'),full_page=True)
         recovery_task=record['task']['id']
+        page.evaluate('async()=>{while(researchState.snapshot.phase!=="COMPLETE")await advance(100000)}')
+        assert page.locator('[data-transfer]').count()==0
+        assert page.locator('[data-recovery-task]').count()==0
+        assert page.locator('#live-count').inner_text()=='0'
         for width in [320,390,768,1024,1440]:
             page.set_viewport_size({'width':width,'height':900})
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width

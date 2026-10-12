@@ -29,6 +29,8 @@ function transferFraction(t,x){
 async function request(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});if(!r.ok){let detail;try{detail=(await r.json()).detail;}catch{detail=r.statusText;}throw Error(typeof detail==='string'?detail:JSON.stringify(detail));}return r.json();}
 function svgText(x,y,value,size=12,fill='#334155',weight=400){return `<text x="${x}" y="${y}" fill="${fill}" font-size="${size}" font-weight="${weight}">${esc(value)}</text>`;}
 function taskName(value){return value.replace(/([a-z])([A-Z])/g,'$1 $2');}
+function taskStatusLabel(task){return task?(statusNames[task.state]||task.state)+(task.degraded?' · early exit':''):'Not released';}
+function taskHostLabel(task,origin){return task?.host&&task.host!==origin&&!['COMMITTED','MISSED','SKIPPED'].includes(task.state)?' → '+task.host.replace('Device_','D'):'';}
 
 function renderBoard(x){renderGroundMap(x);}
 function renderConnections(x){renderGroundConnections(x);}

@@ -38,6 +38,14 @@ function protectionRecord(x,taskId=null,archive=[]){
   return {task,handoff,abort,check,steps};
 }
 
+function liveRecoveryRecord(x,taskId=null,archive=[]){
+  if(x.phase==='COMPLETE')return null;
+  const candidates=taskId?[taskId]:[...(x.after.handoffs||[])].reverse().map(h=>h.task);
+  for(const id of candidates){const r=protectionRecord(x,id,archive);
+    if(r.abort&&r.task?.fallback_admitted&&!['COMMITTED','MISSED','SKIPPED'].includes(r.task.state))return r;}
+  return null;
+}
+
 function buildGroundMap(x){
   if(ground.key===x.config_hash)return;
   ground.key=x.config_hash;ground.taskKey='';ground.positions=groundPositions(x.devices);facility.manual.clear();ground.camera={x:0,y:0,scale:1};ground.pointers.clear();ground.gesture=null;previousPackets.clear();
@@ -72,18 +80,32 @@ function installGroundGestures(svg){
 function renderGroundMap(x){buildGroundMap(x);$('inspect-device').value=state.device;
   document.querySelectorAll('.ground-device').forEach(el=>{const id=el.dataset.device,usage=resourceUsage(x.after.resources[id]);el.dataset.sampleUs=usage.at_us??'';
     for(const k of ['cpu','gpu']){el.querySelector(`[data-${k}-label]`).textContent=k.toUpperCase()+' '+(usage[k]==null?'—':usage[k].toFixed(0)+'%');el.querySelector(`[data-${k}-bar]`).setAttribute('width',usage[k]==null?0:usage[k]*.72);el.dataset[k+'Usage']=usage[k]??'';}
-    const jobs=x.after.jobs.filter(j=>j.device===id&&j.status==='ACTIVE');el.querySelector('[data-device-status]').textContent=jobs.length+' active jobs · '+x.after.tasks.filter(t=>t.device===id&&t.state==='RUNNING').length+' running';el.querySelector('.device-face').setAttribute('stroke-width',state.device===id?'4':'2');el.classList.toggle('device-selected',state.device===id);const owners=activeDeviceTasks(x,id);for(const owner of owners){const text=el.querySelector('[data-live-'+owner.lane+'-task]');text.textContent=owner.lane.toUpperCase()+' · '+taskName(owner.label)+(owner.origin&&owner.origin!==id?' ← '+owner.origin.replace('Device_','N'):'');text.dataset.ownerTask=owner.task||'';}});
+    const jobs=x.after.jobs.filter(j=>j.device===id&&j.status==='ACTIVE');el.querySelector('[data-device-status]').textContent=jobs.length+' active jobs · '+x.after.tasks.filter(t=>t.device===id&&t.state==='RUNNING').length+' running';el.querySelector('.device-face').setAttribute('stroke-width',state.device===id?'4':'2');el.classList.toggle('device-selected',state.device===id);for(const lane of ['cpu','gpu']){const text=el.querySelector('[data-live-'+lane+'-task]');text.textContent=lane.toUpperCase()+' · No sample';text.dataset.ownerTask='';}const owners=activeDeviceTasks(x,id);for(const owner of owners){const text=el.querySelector('[data-live-'+owner.lane+'-task]');text.textContent=owner.lane.toUpperCase()+' · '+taskName(owner.label)+(owner.origin&&owner.origin!==id?' ← '+owner.origin.replace('Device_','N'):'');text.dataset.ownerTask=owner.task||'';}});
   animateFacility(performance.now(),state.paused);renderGroundConnections(x);renderDeviceTasks(x);renderOtherWorkflows(x);renderProtectionFlow(x);arrangeFacilityLabels();
 }
 function renderGroundConnections(x){
-  if(!x||!$('live-links'))return;const next=new Map();let html='';
-  liveTransfers(x).forEach(t=>{const a=ground.positions[t.source],b=ground.positions[t.target];if(!a||!b)return;const key=t.id||[t.source,t.target,t.phase,t.start_us,t.task].join('|'),lane=[...key].reduce((n,c)=>n+c.charCodeAt(0),0)%3*14-14,route=groundRoute(a,b,lane),f=transferFraction(t,x),p=route.point(f),c=t.phase==='result'?'#059669':t.phase==='cancel'?'#ef4444':t.phase.startsWith('fl_')?'#a855f7':'#3b82f6';next.set(key,p);
-    html+=`<g data-transfer="${esc(key)}" data-source="${esc(t.source)}" data-target="${esc(t.target)}" data-fraction="${f}" data-lane="${lane}"><title>${esc(t.source+' → '+t.target+' · '+t.phase+' · '+(t.task||'learning'))}</title><path d="${route.path}" stroke="${c}" stroke-width="3" fill="none" stroke-opacity=".7" marker-end="url(#dependency-arrow)"/><circle cx="${p[0]}" cy="${p[1]}" r="5" fill="${c}" stroke="white" stroke-width="2"/></g>`;});
-  $('live-links').innerHTML=html;
-  if(!state.paused&&!ground.gesture&&!matchMedia('(prefers-reduced-motion:reduce)').matches){$('live-links').querySelectorAll('[data-transfer]').forEach(el=>{const old=previousPackets.get(el.dataset.transfer),p=next.get(el.dataset.transfer);if(old)el.querySelector('circle').animate([{transform:`translate(${old[0]-p[0]}px,${old[1]-p[1]}px)`},{transform:'translate(0,0)'}],{duration:packetDuration,easing:'linear'});});}
-  previousPackets=next;$('live-count').textContent=liveTransfers(x).length;
-  const record=protectionRecord(x,state.protectionTask,state.protectionEvents),h=record.handoff,a=h&&ground.positions[h.target],b=h&&ground.positions[h.origin];
-  $('recovery-links').innerHTML=record.abort&&a&&b?`<g data-recovery-task="${esc(record.task?.id)}" data-source="${esc(h.target)}" data-target="${esc(h.origin)}"><path d="${groundRoute(a,b,55).path}" stroke="#f97316" stroke-width="3" stroke-dasharray="7 5" fill="none" marker-end="url(#dependency-arrow)"/><title>Recorded watchdog abort: local fallback on ${esc(h.origin)}. This mechanism arrow is not a network packet.</title>${svgText((a.x+b.x)/2,(a.y+b.y)/2+38,'Watchdog → local fallback',11,'#c2410c',650)}</g>`:'';
+  if(!x||!$('live-links'))return;
+  const layer=$('live-links'),existing=new Map([...layer.children].map(el=>[el.dataset.transfer,el])),next=new Map(),transfers=liveTransfers(x);
+  const sample=x.session_id+'|'+x.time_us,fresh=layer.dataset.sample!==sample;
+  const smooth=fresh&&!state.paused&&!ground.gesture&&!matchMedia('(prefers-reduced-motion:reduce)').matches;
+  transfers.forEach(t=>{const a=ground.positions[t.source],b=ground.positions[t.target];if(!a||!b)return;
+    const key=t.id||[t.source,t.target,t.phase,t.start_us,t.task].join('|'),lane=[...key].reduce((n,c)=>n+c.charCodeAt(0),0)%3*14-14,route=groundRoute(a,b,lane),f=transferFraction(t,x),p=route.point(f),c=t.phase==='result'?'#059669':t.phase==='cancel'?'#ef4444':t.phase.startsWith('fl_')?'#a855f7':'#3b82f6';
+    let el=existing.get(key);if(!el){el=document.createElementNS('http://www.w3.org/2000/svg','g');el.innerHTML='<title></title><path stroke-width="3" fill="none" stroke-opacity=".7" marker-end="url(#dependency-arrow)"/><circle r="5" stroke="white" stroke-width="2"/>';layer.append(el);}
+    existing.delete(key);Object.assign(el.dataset,{transfer:key,source:t.source,target:t.target,fraction:f,lane});
+    el.querySelector('title').textContent=t.source+' → '+t.target+' · '+t.phase+' · '+(t.task||'learning');
+    const path=el.querySelector('path'),circle=el.querySelector('circle');path.setAttribute('d',route.path);path.setAttribute('stroke',c);
+    // Preserve the displayed packet position when a new observation interrupts smoothing.
+    const old=previousPackets.get(key),matrix=smooth&&old?getComputedStyle(circle).transform:null;
+    let displayed=old;if(matrix&&matrix!=='none'){const m=new DOMMatrixReadOnly(matrix);displayed=[old[0]+m.m41,old[1]+m.m42];}
+    if(fresh||state.paused||ground.gesture)circle.getAnimations().forEach(animation=>animation.cancel());
+    circle.setAttribute('cx',p[0]);circle.setAttribute('cy',p[1]);circle.setAttribute('fill',c);
+    if(smooth&&displayed)circle.animate([{transform:`translate(${displayed[0]-p[0]}px,${displayed[1]-p[1]}px)`},{transform:'translate(0,0)'}],{duration:packetDuration,easing:'linear'});
+    next.set(key,p);
+  });
+  existing.forEach(el=>{el.querySelector('circle').getAnimations().forEach(animation=>animation.cancel());el.remove();});
+  layer.dataset.sample=sample;previousPackets=next;$('live-count').textContent=next.size;
+  const record=liveRecoveryRecord(x,state.protectionTask,state.protectionEvents),h=record?.handoff,a=h&&ground.positions[h.target],b=h&&ground.positions[h.origin];
+  $('recovery-links').innerHTML=record&&a&&b?`<g data-recovery-task="${esc(record.task.id)}" data-source="${esc(h.target)}" data-target="${esc(h.origin)}"><path d="${groundRoute(a,b,55).path}" stroke="#f97316" stroke-width="3" stroke-dasharray="7 5" fill="none" marker-end="url(#dependency-arrow)"/><title>Active watchdog recovery: local fallback on ${esc(h.origin)}. This mechanism arrow is not a network packet.</title>${svgText((a.x+b.x)/2,(a.y+b.y)/2+38,'Watchdog → local fallback',11,'#c2410c',650)}</g>`:'';
 }
 function renderDeviceTasks(x){
   const w=x.workflows.find(w=>w.pipeline_id===state.workflow),d=x.devices.find(d=>d.device_id===state.device),selected=x.after.tasks.find(t=>t.id===state.selectedTask);
@@ -94,7 +116,7 @@ function renderDeviceTasks(x){
     w.dependency_edges.forEach(([a,b])=>{const [ax,ay]=layout.positions[a],[bx,by]=layout.positions[b];html+=`<path data-edge-source="${esc(a)}" data-edge-target="${esc(b)}" d="M${ax+138} ${ay+25} C${ax+168} ${ay+25},${bx-25} ${by+25},${bx} ${by+25}" fill="none" stroke="#cbd5e1" stroke-width="2" marker-end="url(#dependency-arrow)"/>`;});
     w.tasks.forEach(spec=>{const [tx,ty]=layout.positions[spec.task_id];html+=`<g class="task-node" data-stage="${esc(spec.task_id)}" role="button" tabindex="0"><title></title><rect class="task-box" x="${tx}" y="${ty}" width="138" height="60" rx="9" fill="white" stroke="#cbd5e1"/>${svgText(tx+9,ty+20,taskName(spec.task_id),10,'#17243b',600)}<text data-task-status x="${tx+9}" y="${ty+38}" font-size="10"></text><text data-work-label x="${tx+9}" y="${ty+52}" font-size="9" fill="#64748b"></text></g>`;});svg.innerHTML=html;
     svg.querySelectorAll('.task-node').forEach(node=>{const pick=()=>{if(!node.dataset.task)return;state.selectedTask=node.dataset.task;state.protectionTask=node.dataset.task;render(state.snapshot);};node.onclick=pick;node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});}
-  svg.querySelectorAll('.task-node').forEach(node=>{const t=ts.find(t=>t.name===node.dataset.stage),s=taskVisualState(t),c=statusColors[s]||'#94a3b8';node.dataset.task=t?.id||'';node.dataset.state=t?.state||'BLOCKED';node.setAttribute('aria-label',node.dataset.stage+': '+(t?statusNames[s]:'Not released'));node.querySelector('[data-task-status]').textContent=(t?statusNames[s]:'Not released')+(t?.host&&t.host!==state.device?' → '+t.host.replace('Device_','D'):'');node.querySelector('[data-task-status]').setAttribute('fill',c);node.querySelector('.task-box').setAttribute('fill',c+'0d');node.querySelector('.task-box').setAttribute('stroke',state.selectedTask===t?.id?'#7c3aed':c+'80');const spec=w.tasks.find(s=>s.task_id===node.dataset.stage);node.querySelector('[data-work-label]').textContent=spec.resource_demands.some(r=>r.resource==='gpu')?(t?.degraded?'GPU · early-exit path':'GPU · 4 layers'):'CPU';node.querySelector('title').textContent=t?.id||node.dataset.stage;});
+  svg.querySelectorAll('.task-node').forEach(node=>{const t=ts.find(t=>t.name===node.dataset.stage),s=taskVisualState(t),c=statusColors[s]||'#94a3b8';node.dataset.task=t?.id||'';node.dataset.state=t?.state||'BLOCKED';node.setAttribute('aria-label',node.dataset.stage+': '+taskStatusLabel(t));node.querySelector('[data-task-status]').textContent=taskStatusLabel(t)+taskHostLabel(t,state.device);node.querySelector('[data-task-status]').setAttribute('fill',c);node.querySelector('.task-box').setAttribute('fill',c+'0d');node.querySelector('.task-box').setAttribute('stroke',state.selectedTask===t?.id?'#7c3aed':c+'80');const spec=w.tasks.find(s=>s.task_id===node.dataset.stage);node.querySelector('[data-work-label]').textContent=spec.resource_demands.some(r=>r.resource==='gpu')?(t?.degraded?'GPU · early-exit path':'GPU · 4 layers'):'CPU';node.querySelector('title').textContent=t?.id||node.dataset.stage;});
   svg.querySelectorAll('[data-edge-source]').forEach(el=>{const ready=ts.find(t=>t.name===el.dataset.edgeSource)?.state==='COMMITTED';el.dataset.predecessorCommitted=String(ready);el.setAttribute('stroke',ready?'#10b981':'#b7c4d5');el.setAttribute('stroke-dasharray',ready?'':'5 4');});
 }
 function renderProtectionFlow(x){const r=protectionRecord(x,state.protectionTask,state.protectionEvents),t=r.task;

@@ -56,6 +56,28 @@ def test_archived_local_exit_uses_recorded_event_not_another_task():
     assert next(s[2] for s in out['steps'] if s[0]=='EARLY_EXIT')==95
 
 
+@pytest.mark.parametrize('status',['QUEUED','RUNNING','COMMITTED','MISSED','SKIPPED'])
+def test_recovery_arrow_exists_only_while_fallback_task_is_active(status):
+    x={'phase':'RELEASE','after':{'tasks':[{'id':'t','state':status,'fallback_admitted':{'at_us':20}}],
+       'handoffs':[{'task':'t','events':[{'event_type':'WATCHDOG_ABORT','timestamp_us':20,'task_id':'t','payload':{}}]}],'events':[]}}
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'liveRecoveryRecord({json.dumps(x)})')
+    assert (out is not None)==(status in ['QUEUED','RUNNING'])
+    x['phase']='COMPLETE'
+    assert js('function protectionRecord','\nfunction buildGroundMap',f'liveRecoveryRecord({json.dumps(x)})') is None
+
+
+def test_historical_selection_does_not_draw_another_tasks_recovery():
+    x={'phase':'RELEASE','after':{'tasks':[{'id':'old','state':'COMMITTED','fallback_admitted':{'at_us':20}},
+       {'id':'active','state':'RUNNING','fallback_admitted':{'at_us':30}}],
+       'handoffs':[{'task':id,'events':[{'event_type':'WATCHDOG_ABORT','timestamp_us':at,'task_id':id,'payload':{}}]}
+                   for id,at in [('active',30),('old',20)]],'events':[]}}
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'liveRecoveryRecord({json.dumps(x)})')
+    assert out['task']['id']=='active'
+    assert js('function protectionRecord','\nfunction buildGroundMap',f'liveRecoveryRecord({json.dumps(x)},"old")') is None
+    history=js('function protectionRecord','\nfunction buildGroundMap',f'protectionRecord({json.dumps(x)},"old")')
+    assert history['abort']['timestamp_us']==20
+
+
 def test_scenario_variations_preserve_template_and_filter_removed_devices():
     template={'devices':[{'device_id':'Device_1','name':'Drone','kind':'drone','cpu_speed_ppm':1000000},{'device_id':'Device_2','name':'Server','kind':'server','cpu_speed_ppm':2000000},{'device_id':'Device_3','name':'Rover','kind':'rover'},{'device_id':'Device_4','name':'Arm','kind':'arm'}],'workflows':[{'pipeline_id':'autonomy','period_us':90000},{'pipeline_id':'control','period_us':20000}],'faults':[{'device_id':'Device_4'},{'device_id':'Device_2'}]}
     out=js('function configureGroundScenario',None,'(()=>{const next=configureGroundScenario(t,2,"control",150);return {original:t,next}})()',setup='const t='+json.dumps(template)+';')

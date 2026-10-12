@@ -57,8 +57,11 @@ all four full-execution layers were completed.
 Live arrows represent actual in-flight requests, results, cancellations and
 learning updates. Queued and completed packets are excluded. Moving dots use
 accepted simulated observations and pause during sender serialization. A dashed
-orange watchdog/fallback arrow represents the recorded mechanism, not an extra
-network packet.
+orange watchdog/fallback arrow represents active local recovery, not an extra
+network packet. It disappears when that task commits, misses or is skipped.
+Its recorded milestones remain in the protection strip for inspection. Genuine
+in-flight cancellation/result traffic can continue after a task finishes, until
+the corresponding network event resolves. At run completion no live arrows remain.
 
 ## Control workload and playback
 
