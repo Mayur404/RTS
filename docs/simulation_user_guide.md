@@ -62,6 +62,11 @@ network packet. It disappears when that task commits, misses or is skipped.
 Its recorded milestones remain in the protection strip for inspection. Genuine
 in-flight cancellation/result traffic can continue after a task finishes, until
 the corresponding network event resolves. At run completion no live arrows remain.
+Green arrows say **Result returning** and travel from the remote executor back to
+the origin. Inspect that task to see **Result sent back**, **Result arrived** and
+**Result committed** separately; arrival alone does not establish commitment.
+Orange badges above devices show active **Local fallback** or a **Local shorter
+path**. **Early exit** appears only after the corresponding event is recorded.
 
 ## Control workload and playback
 

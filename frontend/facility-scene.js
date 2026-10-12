@@ -88,7 +88,7 @@ function animateFacility(now,force=false){
   if(changed){moveGroundDevices();updateFacilityConnectionGeometry(state.snapshot);}
 }
 function updateFacilityConnectionGeometry(x){
-  $('live-links')?.querySelectorAll('[data-transfer]').forEach(el=>{const a=ground.positions[el.dataset.source],b=ground.positions[el.dataset.target];if(!a||!b)return;const route=groundRoute(a,b,Number(el.dataset.lane)||0),p=route.point(Number(el.dataset.fraction));el.querySelector('path').setAttribute('d',route.path);const c=el.querySelector('circle');c.setAttribute('cx',p[0]);c.setAttribute('cy',p[1]);});
+  $('live-links')?.querySelectorAll('[data-transfer]').forEach(el=>{const a=ground.positions[el.dataset.source],b=ground.positions[el.dataset.target];if(!a||!b)return;const route=groundRoute(a,b,Number(el.dataset.lane)||0),p=route.point(Number(el.dataset.fraction));el.querySelector('path').setAttribute('d',route.path);const label=el.querySelector('.transfer-label'),mid=route.point(.5);label?.setAttribute('transform',`translate(${mid[0]} ${mid[1]-14})`);const c=el.querySelector('circle');c.setAttribute('cx',p[0]);c.setAttribute('cy',p[1]);});
   const rec=$('recovery-links')?.querySelector('[data-recovery-task]');if(rec){const a=ground.positions[rec.dataset.source],b=ground.positions[rec.dataset.target];if(a&&b){rec.querySelector('path').setAttribute('d',groundRoute(a,b,55).path);const text=rec.querySelector('text');text.setAttribute('x',(a.x+b.x)/2);text.setAttribute('y',(a.y+b.y)/2+38);}}
 }
 

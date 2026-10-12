@@ -78,6 +78,48 @@ def test_historical_selection_does_not_draw_another_tasks_recovery():
     assert history['abort']['timestamp_us']==20
 
 
+def test_remote_result_timeline_separates_send_arrival_and_commit():
+    events=[{'event_type':kind,'task_id':'t','timestamp_us':at,'payload':{'phase':phase}}
+            for kind,phase,at in [('OFFLOAD_DISPATCH','request',1),('TX_START','request',2),
+                                   ('TX_END','request',3),('TX_START','result',40),('TX_END','result',60)]]
+    x={'after':{'tasks':[{'id':'t','commit_us':61}],'handoffs':[{'task':'t','events':events}],'events':[]}}
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'protectionRecord({json.dumps(x)},"t")')
+    times={key:time for key,label,time in out['steps']}
+    assert times['RESULT_SENT']==40 and times['RESULT_ARRIVED']==60 and times['TASK_COMMIT']==61
+    x['after']['tasks'][0].pop('commit_us')
+    x['after']['handoffs'][0]['events'].pop()
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'protectionRecord({json.dumps(x)},"t")')
+    times={key:time for key,label,time in out['steps']}
+    assert times['RESULT_SENT']==40 and times['RESULT_ARRIVED'] is None and times['TASK_COMMIT'] is None
+    x['time_us']=45
+    x['after']['handoffs'][0]['events'][-1]['payload']['start_us']=50
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'protectionRecord({json.dumps(x)},"t")')
+    assert next(time for key,label,time in out['steps'] if key=='RESULT_SENT') is None
+    x['time_us']=50
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'protectionRecord({json.dumps(x)},"t")')
+    assert next(time for key,label,time in out['steps'] if key=='RESULT_SENT')==50
+
+
+@pytest.mark.parametrize('status',['RUNNING','QUEUED','COMMITTED','MISSED','SKIPPED'])
+def test_local_badge_requires_active_admission_and_recorded_exit(status):
+    x={'phase':'RELEASE','after':{'tasks':[{'id':'t','device':'D','host':'D','state':status,'degraded':True,'fallback_admitted':{'at_us':12}}],
+       'handoffs':[],'events':[]}}
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'localMechanism({json.dumps(x)},"D")')
+    if status in ['COMMITTED','MISSED','SKIPPED']:
+        assert out is None
+        return
+    assert out['label']=='Local shorter path' and out['earlyExitUs'] is None
+    archive=[{'task_id':'t','event_type':kind,'timestamp_us':at} for kind,at in [('WATCHDOG_ABORT',11),('EARLY_EXIT',13)]]
+    out=js('function protectionRecord','\nfunction buildGroundMap',f'localMechanism({json.dumps(x)},"D",{json.dumps(archive)})')
+    assert out['label']=='Local fallback / Early exit' and out['earlyExitUs']==13
+    assert js('function protectionRecord','\nfunction buildGroundMap',f'localMechanism({json.dumps(x)},"another-device",{json.dumps(archive)})') is None
+
+
+@pytest.mark.parametrize('phase,label',[('request','Task offload'),('result','Result returning'),('cancel','Cancel request'),('fl_update','Learning update')])
+def test_packet_labels_distinguish_direction_and_mechanism(phase,label):
+    assert js('function protectionRecord','\nfunction buildGroundMap',f'transferLabel({json.dumps(phase)})')==label
+
+
 def test_scenario_variations_preserve_template_and_filter_removed_devices():
     template={'devices':[{'device_id':'Device_1','name':'Drone','kind':'drone','cpu_speed_ppm':1000000},{'device_id':'Device_2','name':'Server','kind':'server','cpu_speed_ppm':2000000},{'device_id':'Device_3','name':'Rover','kind':'rover'},{'device_id':'Device_4','name':'Arm','kind':'arm'}],'workflows':[{'pipeline_id':'autonomy','period_us':90000},{'pipeline_id':'control','period_us':20000}],'faults':[{'device_id':'Device_4'},{'device_id':'Device_2'}]}
     out=js('function configureGroundScenario',None,'(()=>{const next=configureGroundScenario(t,2,"control",150);return {original:t,next}})()',setup='const t='+json.dumps(template)+';')

@@ -75,6 +75,8 @@ def main():
         record=page.evaluate('protectionRecord(researchState.snapshot,researchState.protectionTask,researchState.protectionEvents)')
         assert record['abort']
         assert page.locator('[data-recovery-task]').count()==1
+        local=page.locator('[data-mechanism-task="'+record['task']['id']+'"]')
+        assert local.is_visible() and 'Local fallback' in local.text_content()
         for key,label,time in record['steps']:
             node=page.locator('[data-protection-milestone="'+key+'"]')
             assert node.get_attribute('data-event-us')==('' if time is None else str(time))
@@ -85,6 +87,7 @@ def main():
         assert next(t[2] for t in record['steps'] if t[0]=='EARLY_EXIT') is not None
         assert record['task']['state'] in ['COMMITTED','MISSED','SKIPPED']
         assert page.locator('[data-recovery-task]').count()==0,'Completed recovery left a live map arrow'
+        assert page.locator('[data-mechanism-task="'+record['task']['id']+'"]').count()==0
         assert page.locator('[data-protection-milestone="WATCHDOG_ABORT"]').get_attribute('data-observed')=='true'
         check_usage()
         page.screenshot(path=str(root/'watchdog-desktop.png'),full_page=True)

@@ -29,6 +29,10 @@ timeline remains inspectable. It is a mechanism, not a network packet. In-flight
 network cancellation or discarded-result traffic may legitimately outlive a task.
 Packet SVG nodes persist across snapshots and same-snapshot redraws preserve
 their animations. Pausing clears interpolation; completed runs have no live links.
+Live packet labels distinguish task offload, result returning, cancellation and
+learning traffic. Local device badges show admitted shorter paths/fallback and
+early exit only while active; exit labels require the recorded EARLY_EXIT event.
+Remote timelines distinguish result transmission, arrival and task commitment.
 
 Controls select conditions, 2–8 devices, task mix and 50–150% release rate, plus a
 0.05–3× presentation speed slider. Settings create a new paired run after any

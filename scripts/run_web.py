@@ -22,8 +22,6 @@ root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from rts_predictive.api.server import app
-
 import socket
 import urllib.request
 
@@ -71,6 +69,10 @@ def main():
     print("=" * 60)
     print(f"[PredictiveRuntime] Web Dashboard & API Server on http://localhost:{port}")
     print("=" * 60)
+
+    print("[PredictiveRuntime] Loading simulator and AI libraries. First startup may take a moment...", flush=True)
+    from rts_predictive.api.server import app
+    print("[PredictiveRuntime] Libraries loaded. Starting web server...", flush=True)
 
     threading.Thread(target=open_browser, args=(port,), daemon=True).start()
     uvicorn.run(app, host=host, port=port, log_level="info")

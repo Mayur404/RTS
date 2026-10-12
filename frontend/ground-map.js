@@ -21,6 +21,7 @@ function protectionRecord(x,taskId=null,archive=[]){
     if(!task){task=tasks.filter(t=>t.fallback_admitted).sort((a,b)=>a.fallback_admitted.at_us-b.fallback_admitted.at_us).at(-1);handoff=task?hands.filter(h=>h.task===task.id).at(-1):hands.at(-1);if(!task&&handoff)task=tasks.find(t=>t.id===handoff.task);}}
   const events=[...(handoff?.events||[]),...archive,...(x.after.events||[])].filter(e=>e.task_id===task?.id),find=k=>events.find(e=>e.event_type===k);
   const timestamp=(event,record)=>event?.timestamp_us??record?.at_us??null;
+  const sent=events.find(e=>e.event_type==='TX_START'&&e.payload?.phase==='result'&&(e.payload.start_us??e.timestamp_us)<=(x.time_us??Infinity));
   const abort=find('WATCHDOG_ABORT'),check=events.filter(e=>e.event_type==='WATCHDOG_CHECK').at(-1);
   const steps=abort?[
     ['OFFLOAD_DISPATCH','Remote request',timestamp(find('OFFLOAD_DISPATCH'))],
@@ -34,7 +35,7 @@ function protectionRecord(x,taskId=null,archive=[]){
     ['EARLY_EXIT','Early exit',timestamp(find('EARLY_EXIT'))],
     ['OUTPUT_VALIDATION','Output validated',task.output_validation?.valid?task.output_validation.at_us:null],
     ['TASK_COMMIT','Result committed',task.commit_us??null]
-  ]:[['OFFLOAD_DISPATCH','Remote request',timestamp(find('OFFLOAD_DISPATCH'))],['WATCHDOG_CHECK','Watchdog check',timestamp(check)],['FALLBACK_ADMITTED','Local fallback',null],['EARLY_EXIT','Early exit',null],['TASK_COMMIT','Result committed',task?.commit_us??null]];
+  ]:[['OFFLOAD_DISPATCH','Remote request',timestamp(find('OFFLOAD_DISPATCH'))],['WATCHDOG_CHECK','Watchdog check',timestamp(check)],['RESULT_SENT','Result sent back',sent?(sent.payload.start_us??sent.timestamp_us):null],['RESULT_ARRIVED','Result arrived',timestamp(events.find(e=>e.event_type==='TX_END'&&e.payload?.phase==='result'))],['TASK_COMMIT','Result committed',task?.commit_us??null]];
   return {task,handoff,abort,check,steps};
 }
 
@@ -44,6 +45,24 @@ function liveRecoveryRecord(x,taskId=null,archive=[]){
   for(const id of candidates){const r=protectionRecord(x,id,archive);
     if(r.abort&&r.task?.fallback_admitted&&!['COMMITTED','MISSED','SKIPPED'].includes(r.task.state))return r;}
   return null;
+}
+
+function transferLabel(phase){return phase==='result'?'Result returning':phase==='cancel'?'Cancel request':phase.startsWith('fl_')?'Learning update':'Task offload';}
+function localMechanism(x,device,archive=[]){
+  if(x.phase==='COMPLETE')return null;
+  const tasks=x.after.tasks.filter(t=>t.device===device&&t.host===device&&t.fallback_admitted&&!['COMMITTED','MISSED','SKIPPED'].includes(t.state));
+  const task=tasks.sort((a,b)=>b.fallback_admitted.at_us-a.fallback_admitted.at_us)[0];if(!task)return null;
+  const events=[...(x.after.handoffs||[]).filter(h=>h.task===task.id).flatMap(h=>h.events),...archive,...(x.after.events||[])].filter(e=>e.task_id===task.id);
+  const exit=events.find(e=>e.event_type==='EARLY_EXIT'),abort=events.find(e=>e.event_type==='WATCHDOG_ABORT');
+  return {task:task.id,label:(abort?'Local fallback':'Local shorter path')+(exit?' / Early exit':''),earlyExitUs:exit?.timestamp_us??null,admittedUs:task.fallback_admitted.at_us};
+}
+
+function renderLocalMechanisms(x){
+  document.querySelectorAll('.ground-device').forEach(el=>{const record=localMechanism(x,el.dataset.device,state.protectionEvents);let badge=el.querySelector('.local-mechanism');
+    if(!badge){badge=document.createElementNS('http://www.w3.org/2000/svg','g');badge.classList.add('local-mechanism');badge.innerHTML='<rect x="-98" y="-69" width="196" height="23" rx="11" fill="#fff7ed" stroke="#fb923c"/><text x="0" y="-53" text-anchor="middle" font-size="10" font-weight="650" fill="#c2410c"></text><title></title>';el.append(badge);}
+    badge.setAttribute('display',record?'':'none');badge.dataset.mechanismTask=record?.task||'';badge.dataset.earlyExitUs=record?.earlyExitUs??'';
+    if(record){badge.querySelector('text').textContent=record.label;badge.querySelector('title').textContent=record.task+' | Admitted at '+ms(record.admittedUs)+(record.earlyExitUs!=null?' | Early exit at '+ms(record.earlyExitUs):' | No early exit recorded');}
+  });
 }
 
 function buildGroundMap(x){
@@ -81,7 +100,7 @@ function renderGroundMap(x){buildGroundMap(x);$('inspect-device').value=state.de
   document.querySelectorAll('.ground-device').forEach(el=>{const id=el.dataset.device,usage=resourceUsage(x.after.resources[id]);el.dataset.sampleUs=usage.at_us??'';
     for(const k of ['cpu','gpu']){el.querySelector(`[data-${k}-label]`).textContent=k.toUpperCase()+' '+(usage[k]==null?'—':usage[k].toFixed(0)+'%');el.querySelector(`[data-${k}-bar]`).setAttribute('width',usage[k]==null?0:usage[k]*.72);el.dataset[k+'Usage']=usage[k]??'';}
     const jobs=x.after.jobs.filter(j=>j.device===id&&j.status==='ACTIVE');el.querySelector('[data-device-status]').textContent=jobs.length+' active jobs · '+x.after.tasks.filter(t=>t.device===id&&t.state==='RUNNING').length+' running';el.querySelector('.device-face').setAttribute('stroke-width',state.device===id?'4':'2');el.classList.toggle('device-selected',state.device===id);for(const lane of ['cpu','gpu']){const text=el.querySelector('[data-live-'+lane+'-task]');text.textContent=lane.toUpperCase()+' · No sample';text.dataset.ownerTask='';}const owners=activeDeviceTasks(x,id);for(const owner of owners){const text=el.querySelector('[data-live-'+owner.lane+'-task]');text.textContent=owner.lane.toUpperCase()+' · '+taskName(owner.label)+(owner.origin&&owner.origin!==id?' ← '+owner.origin.replace('Device_','N'):'');text.dataset.ownerTask=owner.task||'';}});
-  animateFacility(performance.now(),state.paused);renderGroundConnections(x);renderDeviceTasks(x);renderOtherWorkflows(x);renderProtectionFlow(x);arrangeFacilityLabels();
+  animateFacility(performance.now(),state.paused);renderGroundConnections(x);renderLocalMechanisms(x);renderDeviceTasks(x);renderOtherWorkflows(x);renderProtectionFlow(x);arrangeFacilityLabels();
 }
 function renderGroundConnections(x){
   if(!x||!$('live-links'))return;
@@ -90,10 +109,10 @@ function renderGroundConnections(x){
   const smooth=fresh&&!state.paused&&!ground.gesture&&!matchMedia('(prefers-reduced-motion:reduce)').matches;
   transfers.forEach(t=>{const a=ground.positions[t.source],b=ground.positions[t.target];if(!a||!b)return;
     const key=t.id||[t.source,t.target,t.phase,t.start_us,t.task].join('|'),lane=[...key].reduce((n,c)=>n+c.charCodeAt(0),0)%3*14-14,route=groundRoute(a,b,lane),f=transferFraction(t,x),p=route.point(f),c=t.phase==='result'?'#059669':t.phase==='cancel'?'#ef4444':t.phase.startsWith('fl_')?'#a855f7':'#3b82f6';
-    let el=existing.get(key);if(!el){el=document.createElementNS('http://www.w3.org/2000/svg','g');el.innerHTML='<title></title><path stroke-width="3" fill="none" stroke-opacity=".7" marker-end="url(#dependency-arrow)"/><circle r="5" stroke="white" stroke-width="2"/>';layer.append(el);}
+    let el=existing.get(key);if(!el){el=document.createElementNS('http://www.w3.org/2000/svg','g');el.innerHTML='<title></title><path stroke-width="3" fill="none" stroke-opacity=".7" marker-end="url(#dependency-arrow)"/><circle r="5" stroke="white" stroke-width="2"/><g class="transfer-label" pointer-events="none"><rect x="-52" y="-10" width="104" height="20" rx="10" fill="white" fill-opacity=".95"/><text text-anchor="middle" y="4" font-size="10" font-weight="650"></text></g>';layer.append(el);}
     existing.delete(key);Object.assign(el.dataset,{transfer:key,source:t.source,target:t.target,fraction:f,lane});
     el.querySelector('title').textContent=t.source+' → '+t.target+' · '+t.phase+' · '+(t.task||'learning');
-    const path=el.querySelector('path'),circle=el.querySelector('circle');path.setAttribute('d',route.path);path.setAttribute('stroke',c);
+    const path=el.querySelector('path'),circle=el.querySelector('circle');path.setAttribute('d',route.path);path.setAttribute('stroke',c);const label=el.querySelector('.transfer-label'),mid=route.point(.5);label.setAttribute('transform',`translate(${mid[0]} ${mid[1]-14})`);label.querySelector('text').textContent=transferLabel(t.phase);label.querySelector('text').setAttribute('fill',c);label.querySelector('rect').setAttribute('stroke',c);
     // Preserve the displayed packet position when a new observation interrupts smoothing.
     const old=previousPackets.get(key),matrix=smooth&&old?getComputedStyle(circle).transform:null;
     let displayed=old;if(matrix&&matrix!=='none'){const m=new DOMMatrixReadOnly(matrix);displayed=[old[0]+m.m41,old[1]+m.m42];}
@@ -120,7 +139,8 @@ function renderDeviceTasks(x){
   svg.querySelectorAll('[data-edge-source]').forEach(el=>{const ready=ts.find(t=>t.name===el.dataset.edgeSource)?.state==='COMMITTED';el.dataset.predecessorCommitted=String(ready);el.setAttribute('stroke',ready?'#10b981':'#b7c4d5');el.setAttribute('stroke-dasharray',ready?'':'5 4');});
 }
 function renderProtectionFlow(x){const r=protectionRecord(x,state.protectionTask,state.protectionEvents),t=r.task;
-  $('protection-title').textContent=r.abort?'Watchdog → fallback → early exit':t?.fallback_admitted?'Local early-exit path':r.handoff?'Watching a remote task':'Waiting for a protection event';
+  const exited=r.steps.some(([key,label,time])=>key==='EARLY_EXIT'&&time!=null),arrived=r.steps.some(([key,label,time])=>key==='RESULT_ARRIVED'&&time!=null);
+  $('protection-title').textContent=r.abort?(exited?'Watchdog → fallback → early exit':'Watchdog → local fallback'):t?.fallback_admitted?(exited?'Local early-exit path':'Local shorter path'):arrived?(t?.state==='COMMITTED'?'Remote result committed':'Remote result arrived'):r.handoff?'Watching a remote task':'Waiting for a protection event';
   $('protection-caption').textContent=t?taskName(t.name)+' · '+t.device+(r.handoff?' → '+r.handoff.target:'')+' · '+(r.abort?.payload?.reason||r.check?.payload?.reason||'Recorded local decision').replaceAll('_',' '):'Use slow motion and pause after a protection event to inspect actual recovery. No intervention has been recorded yet.';
   $('protection-flow').innerHTML=r.steps.map(([key,label,time],i)=>`<div class="protection-step ${time!=null?'observed':''}" data-protection-milestone="${key}" data-observed="${time!=null}" data-event-us="${time??''}"><span class="step-index">${time!=null?'✓':i+1}</span><strong>${esc(label)}</strong><small>${time==null?'Not recorded':ms(time)}</small></div>`).join('<span class="flow-arrow" aria-hidden="true">→</span>');
   const cancellation=r.handoff?.events.some(e=>e.event_type==='CANCEL_ACK')?'Cancellation acknowledged':r.handoff?.events.some(e=>e.event_type==='CANCEL_REQUEST')?'Cancellation requested':'No cancellation recorded';

@@ -73,3 +73,22 @@ completion and final-map clearing, playback/pause, and facility/task layout.
 Local evidence is under `.validation/live-connections-fix/`. This follow-up changes
 presentation and checks only; runtime/API/event/model schemas and metrics are
 unchanged. Device travel remains illustrative.
+
+## Result-return and local mechanism visibility
+
+Live arrows now label task offload, result returning, cancellation and learning
+updates. The protection timeline separates actual result transmission, arrival
+and commitment; a queued transmission is not presented as already sent. Active
+origin devices show local fallback/shorter-path badges, adding early exit only
+after its recorded event. Terminal tasks clear these badges.
+
+The launcher reports library loading before importing the heavy AI runtime.
+Its actual startup continued past the reported Python 3.14 PyTorch warning and
+reached the listening server. Warning suppression or a model backend change was
+not required. Library import failure still surfaces its original error.
+
+The full suite passed **461 tests**, including result queue timing, badge evidence,
+and startup/failure checks. Browser checks reconciled real result-return milestones
+in the busy-device scenario and watchdog fallback badges in Recovery stress.
+Evidence remains local under `.validation/mechanism-labels/`. These changes add
+no runtime/API/event/model schema fields and do not change simulation metrics.

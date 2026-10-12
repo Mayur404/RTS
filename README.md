@@ -17,6 +17,10 @@ python -m venv .venv
 
 On an existing setup, run only the last command. Open the printed address, normally
 http://localhost:8000. Stop with Ctrl+C.
+The launcher prints progress while loading the AI libraries. Python 3.14 may
+print a PyTorch `torch.jit.script` compatibility warning during import; that line
+alone is not a startup failure. Wait for the `Uvicorn running` line and use the
+printed address. Preserve any subsequent traceback when diagnosing an actual error.
 
 ## Simulation and Results
 
@@ -66,6 +70,7 @@ historical experiment. Use each raw manifest/source archive when citing results.
 .venv\Scripts\python.exe scripts\check_facility_scene.py --url http://127.0.0.1:8000 --output .validation/new-facility-check
 .venv\Scripts\python.exe scripts\check_plain_results.py --url http://127.0.0.1:8000 --output .validation/new-results-check
 .venv\Scripts\python.exe scripts\check_ground_map.py --url http://127.0.0.1:8000 --output .validation/new-recovery-check
+.venv\Scripts\python.exe scripts\check_connection_lifecycle.py --url "http://127.0.0.1:8000/?family=bursty" --output .validation/new-return-check
 .venv\Scripts\python.exe scripts\check_simple_playback.py --url http://127.0.0.1:8000 --output .validation/new-playback-check
 .venv\Scripts\python.exe scripts\check_result_logic.py --output .validation/new-result-audit
 ```
