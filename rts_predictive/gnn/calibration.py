@@ -55,12 +55,21 @@ class TemperatureCalibrator:
 
     temperature: float = 1.0
 
+    def __post_init__(self):
+        if isinstance(self.temperature, bool) or not isinstance(self.temperature, (int, float)) or not isfinite(self.temperature) or self.temperature <= 0:
+            raise ValueError("temperature must be finite and positive")
+
     def apply(self, probability: float) -> float:
         if not 0 <= probability <= 1:
             raise ValueError("probability must be in [0, 1]")
         clipped = min(1.0 - 1e-7, max(1e-7, probability))
         logit = log(clipped / (1.0 - clipped)) / self.temperature
-        return 1.0 / (1.0 + exp(-logit))
+        # Evaluate the sigmoid on the side with a non-positive exponent.
+        # Very small positive temperatures may legitimately saturate it.
+        if logit >= 0:
+            return 1.0 / (1.0 + exp(-logit))
+        exponent = exp(logit)
+        return exponent / (1.0 + exponent)
 
     @classmethod
     def fit(cls, probabilities, outcomes) -> "TemperatureCalibrator":

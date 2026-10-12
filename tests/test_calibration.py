@@ -29,3 +29,15 @@ def test_temperature_calibration_and_threshold_are_validation_derived():
     assert calibrator.temperature > 0
     assert brier_score(calibrated, outcomes) <= brier_score([0.5] * 4, outcomes)
     assert 0 <= select_f1_threshold(calibrated, outcomes) <= 1
+
+
+@pytest.mark.parametrize("temperature", [0, -1, float("nan"), float("inf"), True])
+def test_temperature_rejects_invalid_scale(temperature):
+    with pytest.raises(ValueError, match="temperature"):
+        TemperatureCalibrator(temperature)
+
+
+def test_small_temperature_saturates_without_overflow_and_stays_monotonic():
+    calibrator = TemperatureCalibrator(1e-300)
+    probabilities = [calibrator.apply(p) for p in [0, 0.1, 0.5, 0.9, 1]]
+    assert probabilities == [0, 0, 0.5, 1, 1]

@@ -5,7 +5,7 @@ GNN architecture parameters, federated learning settings, and decision threshold
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 
 @dataclass

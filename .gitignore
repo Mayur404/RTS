@@ -18,9 +18,6 @@ htmlcov/
 *.pt
 !models/*.pt
 
-# Streamlit
-.streamlit/credentials.toml
-
 # Logs & Diagnostics
 *.log
 
@@ -33,8 +30,26 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Experiment Traces (keep frozen publication plots & tables, ignore heavy raw traces)
+# Local experiment traces and validation evidence
 research_runs/**/raw_runs/
 research_runs/ablation_*
 research_runs/benchmarks/
 research_runs/experiment_suite/
+.validation/
+
+# Generated study output, local archives and compilation files
+research_runs/
+tempwaste/
+*.aux
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Local credentials / agent state
+.env
+.env.*
+.codex/
+.agents/
+.aws/

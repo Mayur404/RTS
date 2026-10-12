@@ -1,68 +1,77 @@
-# Predictive Runtime Research Prototype
+# PredictiveRuntime
 
-This repository contains a discrete-event simulation prototype for distributed
-real-time workloads. Its outputs are **simulated**. They do not establish safety
-of any physical system.
+A paired discrete-event simulator for distributed real-time AI workflows.
+Compare EDF with predictive placement, watchdog monitoring and local early-exit
+recovery on identical seeded workloads. Tasks, compute usage, transfers and results
+come from canonical events.
 
-## Run the project
+## Run
 
-From PowerShell in the repository root (`D:\Course\RTS2`), start the browser
-console with the existing virtual environment:
-
-```powershell
-cd D:\Course\RTS2
-.\.venv\Scripts\python.exe scripts\run_web.py
-```
-
-The app opens at `http://localhost:8000`. The live workspace has continuous
-playback, a larger movable fleet view, an actual pipeline DAG, and a peer
-interaction graph. Dragging nodes changes only their screen layout. The app
-also contains a seeded experiment runner, canonical event inspector, model
-inventory, and evidence guide. API documentation is at `http://localhost:8000/docs`.
-Stop the server with Ctrl+C.
-
-Each browser tab gets its own live simulation session. Live sessions are held in
-memory and are cleared when the server stops.
-
-To generate paper artifacts separately:
+From the repository root in PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\generate_paper_artifacts.py
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe scripts\run_web.py
 ```
 
-To check the installation, run:
+On an existing setup, run only the last command. Open the printed address, normally
+http://localhost:8000. Stop with Ctrl+C.
+
+## Simulation and Results
+
+**Simulation** shows an illustrated facility with moving drones/rovers, live
+simulated CPU/GPU usage and the exact resource-owning tasks. Drag devices, pan the
+ground, wheel/pinch to zoom, or use Fit and Focus device. Inspect all a device's
+workflow DAGs and their committed-predecessor arrows.
+
+Choose 2–8 devices, task mix, 50–150% release rate and 0.05–3× playback speed.
+Pause, step exactly 1 ms, or use Slow motion to inspect recorded watchdog/fallback/
+early-exit milestones. Recovery stress injects explicit peer faults at 98 ms.
+Travel is illustrative and does not alter scheduling or configured link timing.
+
+**Results** explains on-time/missed/active workflows, simulation duration,
+completion times, fallback-task outcomes, prevented and extra misses, and
+per-device totals. A finished fallback task does not imply a saved workflow.
+Active results stay provisional. Completed runs expose raw events, metrics,
+checksummed manifests and source/model/configuration archives.
+
+See the [user guide](docs/simulation_user_guide.md). API documentation is at `/docs`;
+the primary interface is `/api/research/sessions`. Compatibility APIs remain,
+but the retired dashboards are excluded from this repository.
+
+## Research and evidence
+
+- [Final standalone LaTeX](docs/research_project_final.tex) and [PDF](docs/research_project_final.pdf), with exactly three references.
+- [Research methods](docs/research_methods.md), [publication scope](docs/publication_readiness_review.md), and [documentation index](docs/README.md).
+- [Current review](docs/project_review.md) and [architecture decisions](docs/adr/).
+
+Time/work use integer microseconds. At most one task result commits. GNN inference
+and local SGD/FedAvg execute actual model calculations; resource service, thermal
+effects, utility and communications remain configured simulation models.
+Custom workload calibration is unvalidated. Measurements, predictions and
+conditional certificates retain separate scopes. No physical-system safety,
+RF/5G fidelity or universal deadline guarantee is claimed.
+
+Generated runs belong under `.validation/` or `research_runs/` and are ignored by
+Git. Historical raw training/developer evidence and obsolete-file backups remain
+local. A clone includes runnable code/models and the final document, not every
+historical experiment. Use each raw manifest/source archive when citing results.
+
+## Checks
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests -q --basetemp .pytest-tmp-agent
+.venv\Scripts\python.exe -m pytest tests -q --basetemp .pytest-tmp-agent
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe scripts\check_facility_scene.py --url http://127.0.0.1:8000 --output .validation/new-facility-check
+.venv\Scripts\python.exe scripts\check_plain_results.py --url http://127.0.0.1:8000 --output .validation/new-results-check
+.venv\Scripts\python.exe scripts\check_ground_map.py --url http://127.0.0.1:8000 --output .validation/new-recovery-check
+.venv\Scripts\python.exe scripts\check_simple_playback.py --url http://127.0.0.1:8000 --output .validation/new-playback-check
+.venv\Scripts\python.exe scripts\check_result_logic.py --output .validation/new-result-audit
 ```
 
-If `.venv` is absent, create it first with `py -3 -m venv .venv`, then run
-`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
-
-The publication artifact command writes to `research_runs/`: canonical `.jsonl` event records,
-versioned run manifests, a LaTeX table, and 300 DPI PNG and vector PDF plots.
-Metrics and figures in this pipeline are reduced from those event records.
-The browser console uses the FastAPI service's `/api/live` and `/api/v1/runs`
-endpoints. Run exports include the canonical events and in-session provenance.
-
-## Evidence boundaries
-
-- Fixed-priority response-time analysis is implemented in
-  `rts_predictive/verification/timing_analyzer.py`. A `VERIFIED` result applies
-  only to the task set and assumptions bound to its certificate.
-- The simulator currently retains some floating-point millisecond execution
-  state. Integer-microsecond event timestamps at the artifact boundary do not
-  make the entire simulator an exact integer-time model.
-- The default `rts_predictive` benchmark loads integrity-checked GNN and
-  federated bundles. Their calibration and evaluation use simulator rollouts
-  with disjoint seeds; this is simulated model evidence, not hardware evidence
-  or a physical safety certificate.
-- GNN prediction events record calibrated probability, predicted time to
-  violation, cause attribution, model source, and observed host inference
-  latency. Run manifests record both component identities and weight hashes.
-- Dashboard replay is reduced from canonical events. Resource values remain
-  unavailable unless a `RESOURCE_SAMPLE` event recorded them.
-
-The architecture and design specifications are in [Implementation Plan.md](Implementation%20Plan.md)
-and [UI Design.md](UI%20Design.md). Schema and evidence decisions are in `docs/adr/`.
-The formulas and their current scope are documented in `docs/mathematical_audit.md`.
+Browser checks use Playwright and installed Google Chrome on Windows. Node.js is
+needed for JavaScript invariant tests and the result audit. Start the app before
+browser checks; use fresh output folders. Remove the pytest temporary directory
+after the process exits. Additional independent model/trace checks are available
+through `scripts/verify_runtime_end_to_end.py` and `scripts/verify_learning_stress.py`.

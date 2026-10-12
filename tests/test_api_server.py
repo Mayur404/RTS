@@ -65,20 +65,20 @@ def test_api_frontend_served():
 def test_main_ui_serves_self_contained_assets():
     page_path = Path(serve_index().path)
     page = page_path.read_text(encoding="utf-8")
-    styles = (page_path.parent / "style.css").read_text(encoding="utf-8")
-    light_styles = (page_path.parent / "light.css").read_text(encoding="utf-8")
-    script = (page_path.parent / "app.js").read_text(encoding="utf-8")
+    styles = (page_path.parent / "simple-simulation.css").read_text(encoding="utf-8")
+    script = (page_path.parent / "simple-simulation.js").read_text(encoding="utf-8")
 
-    assert 'href="/static/style.css"' in page
-    assert 'src="/static/app.js"' in page
-    assert 'href="/static/light.css"' in page
+    assert 'href="/static/simple-simulation.css"' in page
+    assert 'src="/static/simple-simulation.js"' in page
     assert "cdn." not in page.lower()
     assert "streamlit" not in page.lower()
-    assert "live-grid" in styles
-    assert "color-scheme: light" in light_styles
-    assert 'data-graph="dag"' in page
-    assert 'data-graph="interaction"' in page
-    assert 'request("/api/live/start"' in script
+    assert ".task-node" in styles
+    assert "color-scheme:light" in styles
+    assert 'id="simulation-canvas"' in page
+    assert 'id="view-simulation"' in page
+    assert 'id="view-results"' in page
+    assert page.count('role="tab"') == 2
+    assert "request('/api/research/sessions'" in script
 
 
 def test_device_illustrations_are_valid_local_svgs():

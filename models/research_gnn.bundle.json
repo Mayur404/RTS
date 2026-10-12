@@ -1,0 +1,116 @@
+{
+  "bundle_version": "research-gnn/1.0",
+  "feature_schema": "research-task-resource/9-v3",
+  "weights_sha256": "b2c4321dddf25cd25c6c040082ee2f7c6f9e338485409c6499401ad70ca45f86",
+  "calibration": {
+    "method": "temperature_scaling",
+    "temperature": 0.875
+  },
+  "decision_threshold": 0.2029528846492933,
+  "test_metrics": {
+    "test_samples_count": 1095,
+    "accuracy": 0.9653,
+    "precision": 0.4,
+    "recall": 0.7143,
+    "f1_score": 0.5128,
+    "roc_auc": 0.9814,
+    "auprc": 0.6564,
+    "brier_score": 0.0156,
+    "ece": 0.0071,
+    "decision_threshold": 0.2029528846492933,
+    "ttv_mae_seconds": 0.0755,
+    "avg_prediction_lead_time_ms": 27.43
+  },
+  "dataset_file": "D:\\Course\\RTS2\\.validation\\research-training-final\\graphs.json",
+  "dataset_sha256": "3e939f039762b1a0e6d602d320decf9989ab40515f699a2f9534be1456196b11",
+  "split_seeds": {
+    "train": [
+      4100,
+      4101,
+      4102,
+      4103,
+      4104,
+      4105
+    ],
+    "validation": [
+      4200,
+      4201
+    ],
+    "test": [
+      4300,
+      4301
+    ]
+  },
+  "training_families": [
+    "bursty",
+    "thermal"
+  ],
+  "test_families": [
+    "bursty",
+    "thermal",
+    "unreliable"
+  ],
+  "labels": "observed future firm-task failure (deadline or workflow drop) in EDF no-intervention rollout",
+  "calibration_scope": "EDF TASK_READY graphs; protected checkpoints and shifted policies require separate calibration validation",
+  "cause_scope": "resource-state proxy, not experimentally established causal attribution",
+  "training": {
+    "epochs": 10,
+    "torch_seed": 53,
+    "history": [
+      {
+        "epoch": 1,
+        "training_loss": 0.16426120038325237,
+        "validation_log_loss": 0.06701946412545041
+      },
+      {
+        "epoch": 2,
+        "training_loss": 0.0938593019299468,
+        "validation_log_loss": 0.062473909681612726
+      },
+      {
+        "epoch": 3,
+        "training_loss": 0.08516221095256057,
+        "validation_log_loss": 0.07350943417862753
+      },
+      {
+        "epoch": 4,
+        "training_loss": 0.08489856394478366,
+        "validation_log_loss": 0.06915439394518469
+      },
+      {
+        "epoch": 5,
+        "training_loss": 0.08537949635779064,
+        "validation_log_loss": 0.05427950994941844
+      },
+      {
+        "epoch": 6,
+        "training_loss": 0.08690843439862367,
+        "validation_log_loss": 0.08267760037455751
+      },
+      {
+        "epoch": 7,
+        "training_loss": 0.07638381021856797,
+        "validation_log_loss": 0.05600225763839941
+      },
+      {
+        "epoch": 8,
+        "training_loss": 0.08055917850561561,
+        "validation_log_loss": 0.06292757326088068
+      },
+      {
+        "epoch": 9,
+        "training_loss": 0.07805081526089215,
+        "validation_log_loss": 0.05529442170290848
+      },
+      {
+        "epoch": 10,
+        "training_loss": 0.0711214387685224,
+        "validation_log_loss": 0.04660110105391445
+      }
+    ]
+  },
+  "code_revision": "b414a7264d2145c59082b68a3f7a48e396a2aa44",
+  "source_sha256": "780d7c0fae9ddf2ab8ef6500059816f0fdabd6a3b2dd09201bc633190bc26ece",
+  "working_tree_dirty": true,
+  "source_archive_sha256": "f19cc96a1bc40c65babbb064e5b01660210d6fafdc2a859a7f84236bc2ecdac9"
+}

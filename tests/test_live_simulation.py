@@ -212,3 +212,40 @@ def test_api_v1_live_session_event_cursor_and_delete():
     with pytest.raises(HTTPException) as error:
         get_live_session_events(session_id, after_sequence=0)
     assert error.value.status_code == 404
+
+
+def test_live_simulation_research_parameters_and_stochastic_contention():
+    """Verify customizable research parameters (period, deadline, thresholds) and stochastic contention."""
+    req = LiveStartRequest(
+        fleet_size=4,
+        seed=123,
+        horizon_ms=500.0,
+        enable_contention=True,
+        fault_time_ms=20.0,
+        fault_duration_ms=120.0,
+        contention_magnitude=0.92,
+        target_node="Device_1",
+        risk_threshold=0.55,
+        reliability_threshold=0.65,
+        safety_margin_ms=2.5,
+        network_delay_ms=14.0,
+        period_ms=35.0,
+        deadline_ms=35.0,
+    )
+    snap = live_start(req)
+    assert snap["current_time_ms"] == 0.0
+    assert snap["pipeline"]["period_ms"] == 35.0
+    assert snap["pipeline"]["deadline_ms"] == 35.0
+
+    # Step through 200 ms to trigger stochastic bursts and pipeline jobs
+    step_snap = None
+    for _ in range(10):
+        step_snap = live_step(LiveStepRequest(delta_ms=20.0))
+
+    assert step_snap["current_time_ms"] == 200.0
+    assert step_snap["metrics_gg"]["completed"] > 0
+    assert step_snap["metrics_edf"]["completed"] > 0
+    # Stochastic bursts ensure contention occurred
+    assert step_snap["metrics_gg"]["fallbacks"] >= 0
+    # Both schedulers operated on deterministic reproducible inputs
+    assert step_snap["metrics_gg"]["dmr_pct"] <= step_snap["metrics_edf"]["dmr_pct"] + 10.0

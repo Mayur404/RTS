@@ -7,6 +7,7 @@ and provides backwards-compatible legacy endpoints for the web dashboard.
 import os
 import sys
 import uuid
+import random
 import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
@@ -26,6 +27,7 @@ from rts_predictive.config import PredictiveRuntimeConfig, DEFAULT_TASK_PROFILES
 from rts_predictive.simulator.device import DeviceNode
 from rts_predictive.dashboard.timeline_tracer import run_traced_simulation, run_dynamic_scenario
 from rts_predictive.dashboard.frame_reducer import reduce_events_to_frames
+from rts_predictive.dashboard.live_projection import live_statistics, resource_dependency_graph
 from rts_predictive.simulator.engine import DiscreteEventSimulator
 from rts_predictive.domain.specs import create_autonomous_ai_pipeline_spec
 from rts_predictive.schedulers.predictive_runtime import PredictiveRuntimeScheduler
@@ -55,6 +57,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from rts_predictive.api.research import router as research_router
+app.include_router(research_router)
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "app": "PredictiveRuntime", "version": "2.1.0"}
 
 # In-memory store for runs and deterministic Section 12 cache
 _SECTION_12_CACHE: Optional[Dict[str, Any]] = None
@@ -220,8 +230,15 @@ class LiveStartRequest(BaseModel):
     horizon_ms: float = Field(default=3000.0, gt=100.0)
     enable_contention: bool = Field(default=True)
     fault_time_ms: float = Field(default=25.0, ge=0.0)
+    fault_duration_ms: float = Field(default=180.0, gt=0.0)
     contention_magnitude: float = Field(default=0.90, ge=0.0, le=1.0)
     target_node: str = Field(default="Device_1")
+    risk_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
+    reliability_threshold: float = Field(default=0.70, ge=0.0, le=1.0)
+    safety_margin_ms: float = Field(default=3.0, ge=0.0)
+    network_delay_ms: float = Field(default=12.0, ge=0.0)
+    period_ms: float = Field(default=50.0, ge=10.0, le=500.0)
+    deadline_ms: float = Field(default=50.0, ge=10.0, le=500.0)
 
 
 class LiveStepRequest(BaseModel):
@@ -248,8 +265,15 @@ class LiveSimulationSession:
         horizon_ms: float = 3000.0,
         enable_contention: bool = True,
         fault_time_ms: float = 25.0,
+        fault_duration_ms: float = 180.0,
         contention_magnitude: float = 0.90,
         target_node: str = "Device_1",
+        risk_threshold: float = 0.60,
+        reliability_threshold: float = 0.70,
+        safety_margin_ms: float = 3.0,
+        network_delay_ms: float = 12.0,
+        period_ms: float = 50.0,
+        deadline_ms: float = 50.0,
     ):
         self.fleet_size = fleet_size
         self.session_id: Optional[str] = None
@@ -297,7 +321,10 @@ class LiveSimulationSession:
                         if dist <= 45.0 or fleet_size <= 4:
                             dev.add_neighbor(other_id, distance_m=dist, reliability=0.96)
 
-        self.pipeline_spec = create_autonomous_ai_pipeline_spec()
+        self.pipeline_spec = create_autonomous_ai_pipeline_spec(
+            period_us=int(period_ms * 1000),
+            end_to_end_deadline_us=int(deadline_ms * 1000),
+        )
         for dev_id in self.sim_gg.devices:
             self.sim_gg.schedule_periodic_pipeline(self.pipeline_spec, horizon_ms, device_id=dev_id)
             self.sim_edf.schedule_periodic_pipeline(self.pipeline_spec, horizon_ms, device_id=dev_id)
@@ -307,47 +334,57 @@ class LiveSimulationSession:
             int((horizon_ms + period_ms - 0.000001) // period_ms) * period_ms
         )
 
+        self.enable_contention = enable_contention
+        self.contention_magnitude = contention_magnitude
+        self.network_delay_ms = network_delay_ms
+        self.fault_duration_ms = fault_duration_ms
+        self.rng = random.Random(seed)
+        self._next_contention_time_ms = fault_time_ms if enable_contention else 1e9
+
         if enable_contention:
             self.sim_gg.schedule_contention_burst(
                 target_device_id=target_node,
                 start_time_ms=fault_time_ms,
-                duration_ms=180.0,
+                duration_ms=fault_duration_ms,
                 cpu_load=contention_magnitude,
                 gpu_load=min(1.0, contention_magnitude + 0.05),
-                network_delay_ms=12.0,
+                network_delay_ms=network_delay_ms,
             )
             self.sim_edf.schedule_contention_burst(
                 target_device_id=target_node,
                 start_time_ms=fault_time_ms,
-                duration_ms=180.0,
+                duration_ms=fault_duration_ms,
                 cpu_load=contention_magnitude,
                 gpu_load=min(1.0, contention_magnitude + 0.05),
-                network_delay_ms=12.0,
+                network_delay_ms=network_delay_ms,
             )
             sec_target = "Device_2" if fleet_size >= 2 else target_node
             self.sim_gg.schedule_contention_burst(
                 target_device_id=sec_target,
                 start_time_ms=fault_time_ms + 20.0,
-                duration_ms=160.0,
+                duration_ms=max(100.0, fault_duration_ms - 20.0),
                 cpu_load=0.98,
                 gpu_load=0.98,
-                network_delay_ms=15.0,
+                network_delay_ms=max(network_delay_ms, 15.0),
             )
             self.sim_edf.schedule_contention_burst(
                 target_device_id=sec_target,
                 start_time_ms=fault_time_ms + 20.0,
-                duration_ms=160.0,
+                duration_ms=max(100.0, fault_duration_ms - 20.0),
                 cpu_load=0.98,
                 gpu_load=0.98,
-                network_delay_ms=15.0,
+                network_delay_ms=max(network_delay_ms, 15.0),
             )
+            self._next_contention_time_ms = fault_time_ms + fault_duration_ms + 120.0
+            # Pre-schedule stochastic bursts across the simulation horizon
+            self._schedule_stochastic_contention(through_ms=horizon_ms)
 
         from rts_predictive.gnn.model import load_pretrained_gnn
         from rts_predictive.federated.model import load_federated_model
         self.sched_gg = PredictiveRuntimeScheduler(
-            risk_threshold=0.60,
-            reliability_threshold=0.70,
-            safety_margin_ms=3.0,
+            risk_threshold=risk_threshold,
+            reliability_threshold=reliability_threshold,
+            safety_margin_ms=safety_margin_ms,
             gnn_predictor=load_pretrained_gnn(),
             federated_model=load_federated_model(),
         )
@@ -355,8 +392,45 @@ class LiveSimulationSession:
 
         self.sim_gg.attach_scheduler(self.sched_gg)
         self.sim_edf.attach_scheduler(self.sched_edf)
+        # The explicit live setting overrides the bundle's validation default.
+        self.sched_gg.risk_threshold = risk_threshold
 
         self._last_event_idx_gg = 0
+        self._last_canonical_sequence = 0
+
+    def _schedule_stochastic_contention(self, through_ms: float) -> None:
+        """Schedules realistic stochastic resource contention bursts across fleet nodes."""
+        if not self.enable_contention:
+            return
+        device_ids = list(self.sim_gg.devices.keys())
+        while self._next_contention_time_ms < through_ms:
+            t_start = self._next_contention_time_ms
+            dur = self.rng.uniform(0.7 * self.fault_duration_ms, 1.25 * self.fault_duration_ms)
+            cpu = min(0.99, self.rng.uniform(0.78, 0.96))
+            gpu = min(1.0, cpu + self.rng.uniform(0.01, 0.05))
+            delay = self.rng.uniform(0.8 * self.network_delay_ms, 1.4 * self.network_delay_ms)
+
+            num_devs = 1 if len(device_ids) <= 2 else self.rng.choice([1, 2])
+            targets = self.rng.sample(device_ids, k=num_devs)
+            for dev_id in targets:
+                self.sim_gg.schedule_contention_burst(
+                    target_device_id=dev_id,
+                    start_time_ms=t_start,
+                    duration_ms=dur,
+                    cpu_load=cpu,
+                    gpu_load=gpu,
+                    network_delay_ms=delay,
+                )
+                self.sim_edf.schedule_contention_burst(
+                    target_device_id=dev_id,
+                    start_time_ms=t_start,
+                    duration_ms=dur,
+                    cpu_load=cpu,
+                    gpu_load=gpu,
+                    network_delay_ms=delay,
+                )
+            interval = self.rng.uniform(140.0, 320.0)
+            self._next_contention_time_ms = t_start + dur + interval
 
     def step(self, delta_ms: float = 10.0) -> Dict[str, Any]:
         cur_t = max(self.sim_gg.current_time_ms, self.sim_edf.current_time_ms, self.current_time_ms)
@@ -372,7 +446,7 @@ class LiveSimulationSession:
         return snapshot
 
     def _extend_workload(self, through_ms: float) -> None:
-        """Release paired future jobs as the unbounded live clock advances."""
+        """Release paired future jobs and continuous stochastic bursts as the live clock advances."""
         while self._next_pipeline_release_ms < through_ms:
             for dev_id in self.sim_gg.devices:
                 self.sim_gg.schedule_pipeline_job(
@@ -382,6 +456,7 @@ class LiveSimulationSession:
                     self.pipeline_spec, self._next_pipeline_release_ms, device_id=dev_id
                 )
             self._next_pipeline_release_ms += self._pipeline_period_ms
+        self._schedule_stochastic_contention(through_ms)
 
     def _prune_history(self) -> None:
         """Bound live-only memory while retaining active state and recent outcomes."""
@@ -395,7 +470,10 @@ class LiveSimulationSession:
             ]
             sim.pipeline_jobs = {
                 job_id: job for job_id, job in sim.pipeline_jobs.items()
-                if not job["completed"] or job["release_time_ms"] >= cutoff
+                if job["release_time_ms"] >= cutoff or any(
+                    task.state.value in {"RELEASED", "READY", "RUNNING", "OFFLOADED", "FALLBACK_ACTIVE"}
+                    for task in job["tasks"].values()
+                )
             }
             sim.canonical_events[:] = [
                 event for event in sim.canonical_events
@@ -417,6 +495,10 @@ class LiveSimulationSession:
                     or info["task"].finish_time_ms >= cutoff
                 }
         self.sim_gg.telemetry_log.clear()
+        self.sim_edf.telemetry_log.clear()
+        # Live latency summaries use bounded host observations; lifetime count
+        # remains available separately. Experiment runs preserve all samples.
+        self.sched_gg.inference_latencies_us[:] = self.sched_gg.inference_latencies_us[-4096:]
         self._last_event_idx_gg = 0
 
     def inject_fault(self, target_dev_id: str, cpu: float, gpu: float, duration_ms: float, delay_ms: float):
@@ -481,7 +563,10 @@ class LiveSimulationSession:
         # the DAG to every newly released, mostly-WAITING job.
         focus_jobs = {}
         for device_id, jobs in released_jobs.items():
-            active = [job for job in jobs if not job["completed"]]
+            active = [job for job in jobs if not job["completed"] and any(
+                stage["state"] in {"RELEASED", "READY", "RUNNING", "OFFLOADED", "FALLBACK_ACTIVE"}
+                for stage in job["stages"].values()
+            )]
             focus_jobs[device_id] = min(
                 active, key=lambda item: item["release_time_ms"]
             ) if active else max(jobs, key=lambda item: item["release_time_ms"])
@@ -588,9 +673,15 @@ class LiveSimulationSession:
 
         new_events = self.sim_gg.telemetry_log[self._last_event_idx_gg:]
         self._last_event_idx_gg = len(self.sim_gg.telemetry_log)
+        new_canonical_events = [event for event in self.sim_gg.canonical_events
+                                if event["sequence"] > self._last_canonical_sequence]
+        if new_canonical_events:
+            self._last_canonical_sequence = new_canonical_events[-1]["sequence"]
 
-        m_gg = self.sim_gg.compute_metrics()
-        m_edf = self.sim_edf.compute_metrics()
+        cutoff_us = int(max(0, self.current_time_ms - self.retention_window_ms) * 1000)
+        critical_names = {task.task_id for task in self.pipeline_spec.tasks if task.criticality.value == "high"}
+        m_gg = live_statistics((e for e in self.sim_gg.canonical_events if e["timestamp_us"] >= cutoff_us), critical_names)
+        m_edf = live_statistics((e for e in self.sim_edf.canonical_events if e["timestamp_us"] >= cutoff_us), critical_names)
 
         return {
             "session_id": self.session_id,
@@ -602,10 +693,25 @@ class LiveSimulationSession:
             "nodes": nodes,
             "links": links,
             "active_offloads": active_offloads,
+            "resource_graph": resource_dependency_graph(self.sim_gg),
+            "model_status": {
+                "predictor": self.sched_gg.predictor_type,
+                "estimator": self.sched_gg.estimator_type,
+                "risk_threshold": self.sched_gg.risk_threshold,
+                "inferences": self.sched_gg.gnn_inferences_count,
+                "inference_latency": self.sched_gg.inference_latency_summary(),
+                "federated_mode": "pretrained_snapshot",
+            },
             "pipeline": {
                 "pipeline_id": self.pipeline_spec.pipeline_id,
+                "period_ms": (self.pipeline_spec.period_us or self.pipeline_spec.end_to_end_deadline_us) / 1000,
+                "deadline_ms": self.pipeline_spec.end_to_end_deadline_us / 1000,
                 "stages": [{"id": task.task_id,
                             "relative_deadline_ms": task.relative_deadline_us / 1000,
+                            "nominal_work_ms": task.wcet_distribution.wcet_us / 1000,
+                            "degraded_work_ms": min((point.remaining_wcet_us for point in task.exit_points), default=task.wcet_distribution.wcet_us) / 1000,
+                            "resources": [{"kind": demand.resource.value, "fraction": demand.utilization_fraction}
+                                          for demand in task.resource_demands],
                             "criticality": task.criticality.value}
                            for task in self.pipeline_spec.tasks],
                 "edges": [{"source": source, "target": target}
@@ -614,26 +720,9 @@ class LiveSimulationSession:
                 "focus_jobs": focus_jobs,
             },
             "step_events": new_events,
-            "metrics_gg": {
-                "completed": m_gg.get("completed_tasks", 0),
-                "missed": m_gg.get("deadline_missed_count", 0),
-                "critical_misses": m_gg.get("critical_misses", 0),
-                "wcrt_ms": m_gg.get("worst_case_response_time_ms", 0.0),
-                "fallbacks": m_gg.get("total_fallbacks", 0),
-                "offloads": m_gg.get("total_offloads", 0),
-                "dmr_pct": round(m_gg.get("deadline_miss_ratio", 0.0) * 100.0, 2),
-                "avg_utility": m_gg.get("avg_utility", 1.0),
-            },
-            "metrics_edf": {
-                "completed": m_edf.get("completed_tasks", 0),
-                "missed": m_edf.get("deadline_missed_count", 0),
-                "critical_misses": m_edf.get("critical_misses", 0),
-                "wcrt_ms": m_edf.get("worst_case_response_time_ms", 0.0),
-                "fallbacks": m_edf.get("total_fallbacks", 0),
-                "offloads": m_edf.get("total_offloads", 0),
-                "dmr_pct": round(m_edf.get("deadline_miss_ratio", 0.0) * 100.0, 2),
-                "avg_utility": m_edf.get("avg_utility", 1.0),
-            },
+            "step_canonical_events": new_canonical_events,
+            "metrics_gg": m_gg,
+            "metrics_edf": m_edf,
             "status": "RUNNING",
         }
 
@@ -664,8 +753,15 @@ def live_start(req: LiveStartRequest):
         horizon_ms=req.horizon_ms,
         enable_contention=req.enable_contention,
         fault_time_ms=req.fault_time_ms,
+        fault_duration_ms=req.fault_duration_ms,
         contention_magnitude=req.contention_magnitude,
         target_node=req.target_node,
+        risk_threshold=req.risk_threshold,
+        reliability_threshold=req.reliability_threshold,
+        safety_margin_ms=req.safety_margin_ms,
+        network_delay_ms=req.network_delay_ms,
+        period_ms=req.period_ms,
+        deadline_ms=req.deadline_ms,
     )
     _LIVE_SESSION.session_id = uuid.uuid4().hex
     _LIVE_SESSIONS[_LIVE_SESSION.session_id] = _LIVE_SESSION

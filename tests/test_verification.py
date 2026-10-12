@@ -12,6 +12,35 @@ from rts_predictive.verification import (
     TimingAnalyzer,
     VerificationStatus,
 )
+from rts_predictive.verification.models import AnalysisAssumptions
+
+
+@pytest.mark.parametrize("field_name", ["jitter_model", "blocking_model", "overhead_model"])
+def test_certificate_rejects_assumptions_that_do_not_match_the_recurrence(field_name):
+    certificate = TimingAnalyzer.analyze_task_set(
+        default_degraded_critical_tasks(),
+        assumptions=replace(AnalysisAssumptions(), **{field_name: "unmodeled-contract"}),
+    )
+    assert certificate.status is VerificationStatus.UNSUPPORTED
+    assert not certificate.results
+    assert any(field_name in message for message in certificate.diagnostics)
+
+
+@pytest.mark.parametrize("value", ["false", 0, 1, None])
+def test_nonboolean_suspension_cannot_silently_exclude_a_task(value):
+    tasks = default_degraded_critical_tasks()
+    certificate = TimingAnalyzer.analyze_task_set((replace(tasks[0], suspended=value), *tasks[1:]))
+    assert certificate.status is VerificationStatus.INVALID_INPUT
+    assert not certificate.results
+
+
+def test_nonboolean_assumption_cannot_assert_preemption():
+    certificate = TimingAnalyzer.analyze_task_set(
+        default_degraded_critical_tasks(),
+        assumptions=replace(AnalysisAssumptions(), fully_preemptive="true"),
+    )
+    assert certificate.status is VerificationStatus.INVALID_INPUT
+    assert not certificate.results
 
 
 def task(

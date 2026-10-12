@@ -41,7 +41,7 @@ from rts_predictive.verification.models import (
 
 CERTIFICATE_SCHEMA_VERSION = "rts_predictive.rta-certificate/v1"
 ANALYZER_NAME = "rts_predictive-fp-rta"
-ANALYZER_VERSION = "1.0.0"
+ANALYZER_VERSION = "1.0.1"
 
 
 def _ceil_div(numerator: int, denominator: int) -> int:
@@ -242,6 +242,17 @@ def _validate_request(request: AnalysisRequest) -> Tuple[VerificationStatus, Tup
     if not isinstance(request.assumptions, AnalysisAssumptions):
         invalid.append("assumptions must be AnalysisAssumptions")
     else:
+        for field_name in ("independent_sporadic_tasks", "constrained_deadlines", "fully_preemptive",
+                           "single_processor", "no_self_suspension"):
+            if type(getattr(request.assumptions, field_name)) is not bool:
+                invalid.append(f"assumptions.{field_name} must be boolean")
+        for field_name, supported_model in (
+            ("jitter_model", "bounded_higher_priority_release_jitter"),
+            ("blocking_model", "one_bounded_blocking_term_per_analyzed_job"),
+            ("overhead_model", "own_once_and_each_interfering_release"),
+        ):
+            if getattr(request.assumptions, field_name) != supported_model:
+                unsupported.append(f"assumptions.{field_name} supports only {supported_model!r}")
         if request.has_self_suspensions or not request.assumptions.no_self_suspension:
             unsupported.append("self-suspending tasks are outside this analysis")
         if not request.assumptions.fully_preemptive:
@@ -264,6 +275,8 @@ def _validate_request(request: AnalysisRequest) -> Tuple[VerificationStatus, Tup
         tasks = tuple(request.tasks)
 
     seen_ids: set[str] = set()
+    if type(request.has_self_suspensions) is not bool:
+        invalid.append("has_self_suspensions must be boolean")
     active_priorities: Dict[int, str] = {}
     active_resources: set[str] = set()
     for index, task in enumerate(tasks):
@@ -271,6 +284,8 @@ def _validate_request(request: AnalysisRequest) -> Tuple[VerificationStatus, Tup
         if not isinstance(task, FixedPriorityTask):
             invalid.append(f"{prefix} must be a FixedPriorityTask")
             continue
+        if type(task.suspended) is not bool:
+            invalid.append(f"{prefix}.suspended must be boolean")
         if not isinstance(task.task_id, str) or not task.task_id.strip():
             invalid.append(f"{prefix}.task_id must be a non-empty string")
         elif task.task_id in seen_ids:

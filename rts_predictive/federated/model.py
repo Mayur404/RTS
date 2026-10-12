@@ -113,6 +113,7 @@ def load_federated_model(
     """Load an evaluated federated estimator and verify its bundle integrity."""
     import hashlib
     import json
+    import math
     from pathlib import Path
 
     weights = Path(weights_path)
@@ -120,15 +121,35 @@ def load_federated_model(
     if not weights.is_file() or not bundle_path.is_file():
         raise FileNotFoundError("federated estimator weights and bundle are required")
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    if not isinstance(bundle,dict) or bundle.get("bundle_version")!="rts_predictive.federated-bundle/1":
+        raise ValueError("unsupported federated estimator bundle version")
     digest = hashlib.sha256(weights.read_bytes()).hexdigest()
     if bundle.get("weights_sha256") != digest:
         raise ValueError("federated estimator bundle does not match its weights")
     if bundle.get("feature_schema") != "remote-execution/6-v1":
         raise ValueError("unsupported federated estimator feature schema")
+    multiplier = bundle.get("latency_q95_multiplier")
+    calibration = bundle.get("reliability_calibration", {})
+    if not isinstance(calibration,dict):
+        raise ValueError("invalid federated estimator calibration or latency multiplier")
+    temperature = calibration.get("temperature")
+    if (isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or
+            not math.isfinite(multiplier) or multiplier <= 0 or
+            calibration.get("method") != "temperature_scaling" or
+            isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or
+            not math.isfinite(temperature) or temperature <= 0):
+        raise ValueError("invalid federated estimator calibration or latency multiplier")
     model = DeviceExecutionReliabilityModel()
-    model.load_state_dict(torch.load(weights, map_location="cpu", weights_only=True))
-    model.q95_multiplier = float(bundle["latency_q95_multiplier"])
-    model.reliability_temperature = float(bundle["reliability_calibration"]["temperature"])
+    state = torch.load(weights, map_location="cpu", weights_only=True)
+    expected = model.state_dict()
+    if (set(state) != set(expected) or any(
+            not isinstance(value, torch.Tensor) or value.shape != expected[key].shape or
+            value.dtype != expected[key].dtype or not bool(torch.isfinite(value).all())
+            for key, value in state.items())):
+        raise ValueError("invalid federated estimator parameter tensors")
+    model.load_state_dict(state)
+    model.q95_multiplier = float(multiplier)
+    model.reliability_temperature = float(temperature)
     model.bundle_version = bundle["bundle_version"]
     model.evaluated = True
     model.eval()
